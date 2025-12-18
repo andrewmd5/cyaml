@@ -1,0 +1,177 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macos-arm64
+          - os: macos-13
+            name: macos-x64
+          - os: ubuntu-latest
+            name: linux-x64
+          - os: ubuntu-24.04-arm
+            name: linux-arm64
+          - os: windows-latest
+            name: windows-x64
+            arch: x64
+          - os: windows-11-arm
+            name: windows-arm64
+            arch: ARM64
+
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.name }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup test suite (Unix)
+        if: "!startsWith(matrix.os, 'windows')"
+        run: |
+          cd refs/yaml-test-suite
+          make data
+
+      - name: Setup test suite (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |
+          cd refs\yaml-test-suite
+          make data
+        shell: bash
+
+      - name: Restore test results cache
+        if: matrix.name == 'linux-x64'
+        uses: actions/cache/restore@v4
+        with:
+          path: build/.cyaml_suite_results
+          key: test-results-${{ github.sha }}
+          restore-keys: |
+            test-results-
+
+      - name: Build (Unix)
+        if: "!startsWith(matrix.os, 'windows')"
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+
+      - name: Build (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |
+          cmake -S . -B build -A ${{ matrix.arch }}
+          cmake --build build --config Release
+
+      - name: Test (Unix)
+        if: "!startsWith(matrix.os, 'windows')"
+        run: |
+          cd build
+          ./cyaml_suite ../refs/yaml-test-suite/data
+          ./ypath_test ../refs/ypath/tests.yml
+          ./test_api
+
+      - name: Test (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |
+          cd build
+          .\Release\cyaml_suite.exe ..\refs\yaml-test-suite\data
+          .\Release\ypath_test.exe ..\refs\ypath\tests.yml
+          .\Release\test_api.exe
+
+      - name: Generate summary
+        if: matrix.name == 'linux-x64' && always()
+        run: |
+          cd build
+
+          # Parse summary from results_query (reads .cyaml_suite_results)
+          SUMMARY=$(./results_query)
+          TOTAL=$(echo "$SUMMARY" | grep "Total:" | awk '{print $2}')
+          TREE_PASS=$(echo "$SUMMARY" | grep "Tree:" | awk '{print $2}')
+          TREE_FAIL=$(echo "$SUMMARY" | grep "Tree:" | awk '{print $4}')
+          EMIT_PASS=$(echo "$SUMMARY" | grep "Emit:" | awk '{print $2}')
+          EMIT_FAIL=$(echo "$SUMMARY" | grep "Emit:" | awk '{print $4}')
+          DUMP_PASS=$(echo "$SUMMARY" | grep "Dump:" | awk '{print $2}')
+          DUMP_FAIL=$(echo "$SUMMARY" | grep "Dump:" | awk '{print $4}')
+          JSON_PASS=$(echo "$SUMMARY" | grep "JSON:" | awk '{print $2}' || echo "0")
+          JSON_FAIL=$(echo "$SUMMARY" | grep "JSON:" | awk '{print $4}' || echo "0")
+
+          # Handle missing JSON line
+          [ -z "$JSON_PASS" ] && JSON_PASS=0
+          [ -z "$JSON_FAIL" ] && JSON_FAIL=0
+
+          # Determine status
+          if [ "$TREE_FAIL" = "0" ]; then TREE_ICON="PASS"; else TREE_ICON="FAIL"; fi
+          if [ "$EMIT_FAIL" = "0" ]; then EMIT_ICON="PASS"; else EMIT_ICON="FAIL"; fi
+          if [ "$JSON_FAIL" = "0" ]; then JSON_ICON="PASS"; else JSON_ICON="FAIL"; fi
+          if [ "$DUMP_FAIL" = "0" ]; then DUMP_ICON="PASS"; else DUMP_ICON="warn"; fi
+
+          # Get regressions and improvements
+          REGRESSIONS=$(./results_query regressions)
+          IMPROVEMENTS=$(./results_query improvements)
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## YAML Test Suite Results
+
+          **Total Tests:** $TOTAL
+
+          | Test | Pass | Fail | Status |
+          |------|------|------|--------|
+          | Tree (Parse) | $TREE_PASS | $TREE_FAIL | $TREE_ICON |
+          | Emit | $EMIT_PASS | $EMIT_FAIL | $EMIT_ICON |
+          | JSON | $JSON_PASS | $JSON_FAIL | $JSON_ICON |
+          | Dump | $DUMP_PASS | $DUMP_FAIL | $DUMP_ICON |
+
+          EOF
+
+          # Add regression info if any
+          if ! echo "$REGRESSIONS" | grep -q "No regressions"; then
+            echo "### Regressions Detected" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$REGRESSIONS" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Add improvement info if any
+          if ! echo "$IMPROVEMENTS" | grep -q "No improvements"; then
+            echo "### Improvements" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$IMPROVEMENTS" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Calculate pass rates
+          TREE_TOTAL=$((TREE_PASS + TREE_FAIL))
+          EMIT_TOTAL=$((EMIT_PASS + EMIT_FAIL))
+          JSON_TOTAL=$((JSON_PASS + JSON_FAIL))
+          DUMP_TOTAL=$((DUMP_PASS + DUMP_FAIL))
+
+          [ "$TREE_TOTAL" -gt 0 ] && TREE_PCT=$((TREE_PASS * 100 / TREE_TOTAL)) || TREE_PCT=0
+          [ "$EMIT_TOTAL" -gt 0 ] && EMIT_PCT=$((EMIT_PASS * 100 / EMIT_TOTAL)) || EMIT_PCT=0
+          [ "$JSON_TOTAL" -gt 0 ] && JSON_PCT=$((JSON_PASS * 100 / JSON_TOTAL)) || JSON_PCT=0
+          [ "$DUMP_TOTAL" -gt 0 ] && DUMP_PCT=$((DUMP_PASS * 100 / DUMP_TOTAL)) || DUMP_PCT=0
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+
+          ### Pass Rates
+
+          | Test | Rate |
+          |------|------|
+          | Tree | ${TREE_PCT}% |
+          | Emit | ${EMIT_PCT}% |
+          | JSON | ${JSON_PCT}% |
+          | Dump | ${DUMP_PCT}% |
+          EOF
+
+      - name: Save test results cache
+        if: matrix.name == 'linux-x64' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: build/.cyaml_suite_results
+          key: test-results-${{ github.sha }}

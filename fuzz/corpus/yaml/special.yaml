@@ -1,0 +1,5 @@
+null_val: ~
+bool_true: true
+bool_false: false
+inf: .inf
+nan: .nan

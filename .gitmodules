@@ -1,0 +1,9 @@
+[submodule "third-party/Unity"]
+	path = third-party/Unity
+	url = https://github.com/ThrowTheSwitch/Unity
+[submodule "refs/yaml-test-suite"]
+	path = refs/yaml-test-suite
+	url = https://github.com/yaml/yaml-test-suite
+[submodule "refs/yaml-spec"]
+	path = refs/yaml-spec
+	url = https://github.com/yaml/yaml-spec

@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            name: macos-arm64
+            artifact: cyaml-macos-arm64
+          - os: macos-13
+            name: macos-x64
+            artifact: cyaml-macos-x64
+          - os: ubuntu-latest
+            name: linux-x64
+            artifact: cyaml-linux-x64
+          - os: ubuntu-24.04-arm
+            name: linux-arm64
+            artifact: cyaml-linux-arm64
+          - os: windows-latest
+            name: windows-x64
+            artifact: cyaml-windows-x64
+            arch: x64
+          - os: windows-11-arm
+            name: windows-arm64
+            artifact: cyaml-windows-arm64
+            arch: ARM64
+
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.name }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup test suite (Unix)
+        if: "!startsWith(matrix.os, 'windows')"
+        run: |
+          cd refs/yaml-test-suite
+          make data
+
+      - name: Setup test suite (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |
+          cd refs\yaml-test-suite
+          make data
+        shell: bash
+
+      - name: Build (Unix)
+        if: "!startsWith(matrix.os, 'windows')"
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+
+      - name: Build (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |
+          cmake -S . -B build -A ${{ matrix.arch }}
+          cmake --build build --config Release
+
+      - name: Test (Unix)
+        if: "!startsWith(matrix.os, 'windows')"
+        run: |
+          cd build
+          ./cyaml_suite ../refs/yaml-test-suite/data
+          ./ypath_test ../refs/ypath/tests.yml
+          ./test_api
+
+      - name: Test (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |
+          cd build
+          .\Release\cyaml_suite.exe ..\refs\yaml-test-suite\data
+          .\Release\ypath_test.exe ..\refs\ypath\tests.yml
+          .\Release\test_api.exe
+
+      - name: Package (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          mkdir -p dist/lib dist/include
+          cp src/cyaml.h dist/include/
+          cp build/libcyaml.a dist/lib/
+          cp build/libcyaml.dylib dist/lib/ 2>/dev/null || true
+          cd dist && tar -czvf ${{ matrix.artifact }}.tar.gz include lib
+
+      - name: Package (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          mkdir -p dist/lib dist/include
+          cp src/cyaml.h dist/include/
+          cp build/libcyaml.a dist/lib/
+          cp build/libcyaml.so* dist/lib/ 2>/dev/null || true
+          cd dist && tar -czvf ${{ matrix.artifact }}.tar.gz include lib
+
+      - name: Package (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\lib
+          New-Item -ItemType Directory -Force -Path dist\include
+          Copy-Item src\cyaml.h dist\include\
+          Copy-Item build\Release\cyaml.lib dist\lib\ -ErrorAction SilentlyContinue
+          Copy-Item build\Release\cyaml.dll dist\lib\ -ErrorAction SilentlyContinue
+          Compress-Archive -Path dist\include, dist\lib -DestinationPath dist\${{ matrix.artifact }}.zip
+
+      - name: Upload artifact (Unix)
+        if: "!startsWith(matrix.os, 'windows')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.tar.gz
+
+      - name: Upload artifact (Windows)
+        if: startsWith(matrix.os, 'windows')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --generate-notes \
+            artifacts/**/*.tar.gz \
+            artifacts/**/*.zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
