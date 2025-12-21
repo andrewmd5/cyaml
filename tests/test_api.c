@@ -1582,7 +1582,7 @@ void test_cyaml_comment_count_null(void)
     TEST_ASSERT_EQUAL_UINT32(0, cyaml_comment_count(NULL));
 }
 
-void test_cyaml_comment_count_no_comments_option(void)
+void test_cyaml_comment_count_no.preserve_comments_option(void)
 {
     const char* yaml = "key: value  # comment";
     cyaml_error_t err;
@@ -1593,10 +1593,10 @@ void test_cyaml_comment_count_no_comments_option(void)
     cyaml_free(doc);
 }
 
-void test_cyaml_comment_count_with_comments(void)
+void test_cyaml_comment_count_with.preserve_comments(void)
 {
     const char* yaml = "# header comment\nkey: value  # inline comment";
-    cyaml_opts_t opts = { .comments = true };
+    cyaml_opts_t opts = { .preserve.preserve_comments = true };
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
@@ -1615,7 +1615,7 @@ void test_cyaml_comment_at_null(void)
 void test_cyaml_comment_at_out_of_bounds(void)
 {
     const char* yaml = "# comment\nkey: value";
-    cyaml_opts_t opts = { .comments = true };
+    cyaml_opts_t opts = { .preserve_comments = true };
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
@@ -1628,7 +1628,7 @@ void test_cyaml_comment_at_out_of_bounds(void)
 void test_cyaml_comment_at_valid(void)
 {
     const char* yaml = "# this is a comment\nkey: value";
-    cyaml_opts_t opts = { .comments = true };
+    cyaml_opts_t opts = { .preserve_comments = true };
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
@@ -1645,7 +1645,7 @@ void test_cyaml_comment_at_valid(void)
 void test_cyaml_comment_multiple(void)
 {
     const char* yaml = "# first comment\n# second comment\nkey: value";
-    cyaml_opts_t opts = { .comments = true };
+    cyaml_opts_t opts = { .preserve_comments = true };
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
@@ -1663,14 +1663,14 @@ void test_cyaml_comment_multiple(void)
 
 
 
-void test_cyaml_emit_with_comments_disabled(void)
+void test_cyaml_emit_with.preserve_comments_disabled(void)
 {
     const char* yaml = "# header comment\nkey: value";
-    cyaml_opts_t parse_opts = { .comments = true };
+    cyaml_opts_t parse_opts = { .preserve_comments = true };
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &parse_opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
-    cyaml_emit_opts_t emit_opts = { .indent = 2, .comments = false };
+    cyaml_emit_opts_t emit_opts = { .indent = 2, .preserve_comments = false };
     size_t len;
     char* output = cyaml_emit(doc, &emit_opts, &len);
     TEST_ASSERT_NOT_NULL(output);
@@ -1680,14 +1680,14 @@ void test_cyaml_emit_with_comments_disabled(void)
     cyaml_free(doc);
 }
 
-void test_cyaml_emit_with_comments_enabled(void)
+void test_cyaml_emit_with.preserve_comments_enabled(void)
 {
     const char* yaml = "# header comment\nkey: value";
-    cyaml_opts_t parse_opts = { .comments = true };
+    cyaml_opts_t parse_opts = { .preserve_comments = true };
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &parse_opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
-    cyaml_emit_opts_t emit_opts = { .indent = 2, .comments = true };
+    cyaml_emit_opts_t emit_opts = { .indent = 2, .preserve_comments = true };
     size_t len;
     char* output = cyaml_emit(doc, &emit_opts, &len);
     TEST_ASSERT_NOT_NULL(output);
@@ -1700,11 +1700,11 @@ void test_cyaml_emit_with_comments_enabled(void)
 void test_cyaml_emit_inline_comment(void)
 {
     const char* yaml = "key: value  # inline comment";
-    cyaml_opts_t parse_opts = { .comments = true };
+    cyaml_opts_t parse_opts = { .preserve_comments = true };
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &parse_opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
-    cyaml_emit_opts_t emit_opts = { .indent = 2, .comments = true };
+    cyaml_emit_opts_t emit_opts = { .indent = 2, .preserve_comments = true };
     size_t len;
     char* output = cyaml_emit(doc, &emit_opts, &len);
     TEST_ASSERT_NOT_NULL(output);
@@ -1713,14 +1713,14 @@ void test_cyaml_emit_inline_comment(void)
     cyaml_free(doc);
 }
 
-void test_cyaml_emit_seq_with_comments(void)
+void test_cyaml_emit_seq_with.preserve_comments(void)
 {
     const char* yaml = "# list header\n- one  # first item\n- two\n# trailing";
-    cyaml_opts_t parse_opts = { .comments = true };
+    cyaml_opts_t parse_opts = { .preserve_comments = true };
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &parse_opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
-    cyaml_emit_opts_t emit_opts = { .indent = 2, .comments = true };
+    cyaml_emit_opts_t emit_opts = { .indent = 2, .preserve_comments = true };
     size_t len;
     char* output = cyaml_emit(doc, &emit_opts, &len);
     TEST_ASSERT_NOT_NULL(output);
@@ -1731,14 +1731,14 @@ void test_cyaml_emit_seq_with_comments(void)
     cyaml_free(doc);
 }
 
-void test_cyaml_emit_map_with_comments(void)
+void test_cyaml_emit_map_with.preserve_comments(void)
 {
     const char* yaml = "# config section\nhost: localhost\n# port setting\nport: 8080";
-    cyaml_opts_t parse_opts = { .comments = true };
+    cyaml_opts_t parse_opts = { .preserve_comments = true };
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &parse_opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
-    cyaml_emit_opts_t emit_opts = { .indent = 2, .comments = true };
+    cyaml_emit_opts_t emit_opts = { .indent = 2, .preserve_comments = true };
     size_t len;
     char* output = cyaml_emit(doc, &emit_opts, &len);
     TEST_ASSERT_NOT_NULL(output);
@@ -1749,13 +1749,13 @@ void test_cyaml_emit_map_with_comments(void)
     cyaml_free(doc);
 }
 
-void test_cyaml_emit_no_comments_parsed(void)
+void test_cyaml_emit_no.preserve_comments_parsed(void)
 {
     const char* yaml = "# comment\nkey: value";
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     TEST_ASSERT_NOT_NULL(doc);
-    cyaml_emit_opts_t emit_opts = { .indent = 2, .comments = true };
+    cyaml_emit_opts_t emit_opts = { .indent = 2, .preserve_comments = true };
     size_t len;
     char* output = cyaml_emit(doc, &emit_opts, &len);
     TEST_ASSERT_NOT_NULL(output);
@@ -1765,17 +1765,17 @@ void test_cyaml_emit_no_comments_parsed(void)
     cyaml_free(doc);
 }
 
-void test_cyaml_emit_map_inline_comments(void)
+void test_cyaml_emit_map_inline.preserve_comments(void)
 {
     const char* yaml = "variables:\n"
                        "  MY_VARIABLE: 'true'    # Comment 1\n"
                        "  OTHER_VARIABLE: 'true' # Comment 2\n"
                        "  BEST_VARIABLE: 'true'  # Comment 3\n";
-    cyaml_opts_t parse_opts = { .comments = true };
+    cyaml_opts_t parse_opts = { .preserve_comments = true };
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &parse_opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
-    cyaml_emit_opts_t emit_opts = { .indent = 2, .comments = true };
+    cyaml_emit_opts_t emit_opts = { .indent = 2, .preserve_comments = true };
     size_t len;
     char* output = cyaml_emit(doc, &emit_opts, &len);
     TEST_ASSERT_NOT_NULL(output);
@@ -1787,7 +1787,7 @@ void test_cyaml_emit_map_inline_comments(void)
     cyaml_free(doc);
 }
 
-void test_cyaml_emit_seq_complex_comments(void)
+void test_cyaml_emit_seq_complex.preserve_comments(void)
 {
     const char* yaml = "# comment before a sequence\n"
                        "- first item\n"
@@ -1796,12 +1796,12 @@ void test_cyaml_emit_seq_complex_comments(void)
                        "              # continuation comment\n"
                        "# comment describing last item\n"
                        "- last item\n";
-    cyaml_opts_t parse_opts = { .comments = true };
+    cyaml_opts_t parse_opts = { .preserve_comments = true };
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &parse_opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
     TEST_ASSERT_TRUE(cyaml_comment_count(doc) >= 4);
-    cyaml_emit_opts_t emit_opts = { .indent = 2, .comments = true };
+    cyaml_emit_opts_t emit_opts = { .indent = 2, .preserve_comments = true };
     size_t len;
     char* output = cyaml_emit(doc, &emit_opts, &len);
     TEST_ASSERT_NOT_NULL(output);
@@ -2302,22 +2302,22 @@ int main(void)
 
     
     RUN_TEST(test_cyaml_comment_count_null);
-    RUN_TEST(test_cyaml_comment_count_no_comments_option);
-    RUN_TEST(test_cyaml_comment_count_with_comments);
+    RUN_TEST(test_cyaml_comment_count_no.preserve_comments_option);
+    RUN_TEST(test_cyaml_comment_count_with.preserve_comments);
     RUN_TEST(test_cyaml_comment_at_null);
     RUN_TEST(test_cyaml_comment_at_out_of_bounds);
     RUN_TEST(test_cyaml_comment_at_valid);
     RUN_TEST(test_cyaml_comment_multiple);
 
     
-    RUN_TEST(test_cyaml_emit_with_comments_disabled);
-    RUN_TEST(test_cyaml_emit_with_comments_enabled);
+    RUN_TEST(test_cyaml_emit_with.preserve_comments_disabled);
+    RUN_TEST(test_cyaml_emit_with.preserve_comments_enabled);
     RUN_TEST(test_cyaml_emit_inline_comment);
-    RUN_TEST(test_cyaml_emit_seq_with_comments);
-    RUN_TEST(test_cyaml_emit_map_with_comments);
-    RUN_TEST(test_cyaml_emit_no_comments_parsed);
-    RUN_TEST(test_cyaml_emit_map_inline_comments);
-    RUN_TEST(test_cyaml_emit_seq_complex_comments);
+    RUN_TEST(test_cyaml_emit_seq_with.preserve_comments);
+    RUN_TEST(test_cyaml_emit_map_with.preserve_comments);
+    RUN_TEST(test_cyaml_emit_no.preserve_comments_parsed);
+    RUN_TEST(test_cyaml_emit_map_inline.preserve_comments);
+    RUN_TEST(test_cyaml_emit_seq_complex.preserve_comments);
 
     
     RUN_TEST(test_cyaml_map_sort_alphabetical);
