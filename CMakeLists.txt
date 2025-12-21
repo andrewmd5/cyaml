@@ -153,8 +153,8 @@ endif()
 if(CYAML_BUILD_TESTS)
     enable_testing()
 
-    add_library(unity STATIC third-party/unity/src/unity.c)
-    target_include_directories(unity PUBLIC third-party/unity/src)
+    add_library(unity STATIC third-party/Unity/src/unity.c)
+    target_include_directories(unity PUBLIC third-party/Unity/src)
     target_compile_definitions(unity PUBLIC UNITY_INCLUDE_DOUBLE)
 
     set(CYAML_LIB $<IF:$<BOOL:${CYAML_BUILD_STATIC}>,cyaml_static,cyaml_shared>)

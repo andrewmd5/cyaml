@@ -1,0 +1,1185 @@
+# YPATH Test Suite
+#
+# Structure:
+#   - id: unique identifier
+#     description: human readable explanation
+#     document: the YAML document to query
+#     path: the YPATH expression
+#     result: expected output (list of nodes)
+#     error: expected error type (if applicable)
+
+---
+suite: core
+description: Core path navigation tests
+
+tests:
+
+  # Root Selection
+
+  - id: root-001
+    description: Select document root (scalar)
+    document: hello
+    path: /
+    result:
+      - hello
+
+  - id: root-002
+    description: Select document root (mapping)
+    document:
+      name: Alice
+      age: 30
+    path: /
+    result:
+      - {name: Alice, age: 30}
+
+  - id: root-003
+    description: Select document root (sequence)
+    document:
+      - one
+      - two
+      - three
+    path: /
+    result:
+      - [one, two, three]
+
+  # Identity Selection
+
+  - id: identity-001
+    description: Identity on root
+    document:
+      foo: bar
+    path: /.
+    result:
+      - {foo: bar}
+
+  - id: identity-002
+    description: Identity after navigation
+    document:
+      outer:
+        inner: value
+    path: /outer/.
+    result:
+      - {inner: value}
+
+  # Simple Child Selection
+
+  - id: child-001
+    description: Select mapping child by name
+    document:
+      name: Alice
+      age: 30
+    path: /name
+    result:
+      - Alice
+
+  - id: child-002
+    description: Select nested mapping child
+    document:
+      person:
+        name: Bob
+        age: 25
+    path: /person/name
+    result:
+      - Bob
+
+  - id: child-003
+    description: Select nonexistent key
+    document:
+      name: Alice
+    path: /missing
+    result: []
+
+  - id: child-004
+    description: Select child of scalar (empty result)
+    document:
+      name: Alice
+    path: /name/foo
+    result: []
+
+  - id: child-005
+    description: Select deeply nested value
+    document:
+      a:
+        b:
+          c:
+            d: found
+    path: /a/b/c/d
+    result:
+      - found
+
+  - id: child-006
+    description: Key with underscore
+    document:
+      user_name: alice
+    path: /user_name
+    result:
+      - alice
+
+  - id: child-007
+    description: Key with numbers
+    document:
+      item1: first
+      item2: second
+    path: /item2
+    result:
+      - second
+
+  # Parent Selection
+
+  - id: parent-001
+    description: Parent of nested node
+    document:
+      outer:
+        inner: value
+    path: /outer/inner/..
+    result:
+      - {inner: value}
+
+  - id: parent-002
+    description: Parent of root (empty)
+    document:
+      foo: bar
+    path: /..
+    result: []
+
+  - id: parent-003
+    description: Multiple parent steps
+    document:
+      a:
+        b:
+          c: deep
+    path: /a/b/c/../..
+    result:
+      - {b: {c: deep}}
+
+  - id: parent-004
+    description: Parent then child
+    document:
+      users:
+        alice:
+          role: admin
+        bob:
+          role: guest
+    path: /users/alice/../bob/role
+    result:
+      - guest
+
+  # Null and Boolean Values
+
+  - id: types-001
+    description: Select null value
+    document:
+      value: null
+    path: /value
+    result:
+      - null
+
+  - id: types-002
+    description: Select true boolean
+    document:
+      enabled: true
+    path: /enabled
+    result:
+      - true
+
+  - id: types-003
+    description: Select false boolean
+    document:
+      enabled: false
+    path: /enabled
+    result:
+      - false
+
+  - id: types-004
+    description: Select integer
+    document:
+      count: 42
+    path: /count
+    result:
+      - 42
+
+  - id: types-005
+    description: Select float
+    document:
+      price: 19.99
+    path: /price
+    result:
+      - 19.99
+
+  - id: types-006
+    description: Select negative number
+    document:
+      offset: -10
+    path: /offset
+    result:
+      - -10
+
+---
+suite: index
+description: Sequence index selection tests
+
+tests:
+
+  # Basic Indexing
+
+  - id: index-001
+    description: First element
+    document:
+      - apple
+      - banana
+      - cherry
+    path: /[0]
+    result:
+      - apple
+
+  - id: index-002
+    description: Second element
+    document:
+      - apple
+      - banana
+      - cherry
+    path: /[1]
+    result:
+      - banana
+
+  - id: index-003
+    description: Last element with negative index
+    document:
+      - apple
+      - banana
+      - cherry
+    path: /[-1]
+    result:
+      - cherry
+
+  - id: index-004
+    description: Second to last element
+    document:
+      - apple
+      - banana
+      - cherry
+    path: /[-2]
+    result:
+      - banana
+
+  - id: index-005
+    description: Out of bounds positive index
+    document:
+      - apple
+      - banana
+    path: /[99]
+    result: []
+
+  - id: index-006
+    description: Out of bounds negative index
+    document:
+      - apple
+      - banana
+    path: /[-99]
+    result: []
+
+  - id: index-007
+    description: Index on nested sequence
+    document:
+      items:
+        - first
+        - second
+        - third
+    path: /items[1]
+    result:
+      - second
+
+  - id: index-008
+    description: Index then child
+    document:
+      users:
+        - name: Alice
+          age: 30
+        - name: Bob
+          age: 25
+    path: /users[0]/name
+    result:
+      - Alice
+
+  - id: index-009
+    description: Multiple index steps
+    document:
+      matrix:
+        - [1, 2, 3]
+        - [4, 5, 6]
+        - [7, 8, 9]
+    path: /matrix[1][2]
+    result:
+      - 6
+
+  - id: index-010
+    description: Index on empty sequence
+    document: []
+    path: /[0]
+    result: []
+
+---
+suite: slice
+description: Sequence slice selection tests
+
+tests:
+
+  # Basic Slicing
+
+  - id: slice-001
+    description: First two elements
+    document:
+      - a
+      - b
+      - c
+      - d
+      - e
+    path: /[0:2]
+    result:
+      - a
+      - b
+
+  - id: slice-002
+    description: Middle elements
+    document:
+      - a
+      - b
+      - c
+      - d
+      - e
+    path: /[1:4]
+    result:
+      - b
+      - c
+      - d
+
+  - id: slice-003
+    description: From start (implicit)
+    document:
+      - a
+      - b
+      - c
+      - d
+      - e
+    path: /[:3]
+    result:
+      - a
+      - b
+      - c
+
+  - id: slice-004
+    description: To end (implicit)
+    document:
+      - a
+      - b
+      - c
+      - d
+      - e
+    path: /[2:]
+    result:
+      - c
+      - d
+      - e
+
+  - id: slice-005
+    description: All elements
+    document:
+      - a
+      - b
+      - c
+    path: /[:]
+    result:
+      - a
+      - b
+      - c
+
+  - id: slice-006
+    description: Negative start index
+    document:
+      - a
+      - b
+      - c
+      - d
+      - e
+    path: /[-3:]
+    result:
+      - c
+      - d
+      - e
+
+  - id: slice-007
+    description: Negative end index
+    document:
+      - a
+      - b
+      - c
+      - d
+      - e
+    path: /[:-2]
+    result:
+      - a
+      - b
+      - c
+
+  - id: slice-008
+    description: Both negative indices
+    document:
+      - a
+      - b
+      - c
+      - d
+      - e
+    path: /[-4:-1]
+    result:
+      - b
+      - c
+      - d
+
+  # Slicing with Step
+
+  - id: slice-009
+    description: Every other element
+    document:
+      - a
+      - b
+      - c
+      - d
+      - e
+      - f
+    path: /[::2]
+    result:
+      - a
+      - c
+      - e
+
+  - id: slice-010
+    description: Every third element
+    document:
+      - a
+      - b
+      - c
+      - d
+      - e
+      - f
+      - g
+      - h
+      - i
+    path: /[::3]
+    result:
+      - a
+      - d
+      - g
+
+  - id: slice-011
+    description: Reverse order
+    document:
+      - a
+      - b
+      - c
+      - d
+    path: /[::-1]
+    result:
+      - d
+      - c
+      - b
+      - a
+
+  - id: slice-012
+    description: Reverse every other
+    document:
+      - a
+      - b
+      - c
+      - d
+      - e
+    path: /[::-2]
+    result:
+      - e
+      - c
+      - a
+
+  - id: slice-013
+    description: Slice with step on range
+    document:
+      - a
+      - b
+      - c
+      - d
+      - e
+      - f
+      - g
+      - h
+    path: /[1:7:2]
+    result:
+      - b
+      - d
+      - f
+
+  - id: slice-014
+    description: Empty slice result
+    document:
+      - a
+      - b
+      - c
+    path: /[5:10]
+    result: []
+
+---
+suite: wildcard
+description: Wildcard selection tests
+
+tests:
+
+  # Mapping Wildcard
+
+  - id: wildcard-001
+    description: All values in mapping
+    document:
+      a: 1
+      b: 2
+      c: 3
+    path: /*
+    result:
+      - 1
+      - 2
+      - 3
+
+  - id: wildcard-002
+    description: Wildcard then child
+    document:
+      user1:
+        name: Alice
+      user2:
+        name: Bob
+    path: /*/name
+    result:
+      - Alice
+      - Bob
+
+  - id: wildcard-003
+    description: Nested wildcard
+    document:
+      groups:
+        admin:
+          users:
+            - alice
+            - bob
+        guest:
+          users:
+            - charlie
+    path: /groups/*/users
+    result:
+      - [alice, bob]
+      - [charlie]
+
+  # Sequence Wildcard
+
+  - id: wildcard-004
+    description: All elements in sequence
+    document:
+      - apple
+      - banana
+      - cherry
+    path: /*
+    result:
+      - apple
+      - banana
+      - cherry
+
+  - id: wildcard-005
+    description: Wildcard on sequence of mappings
+    document:
+      items:
+        - name: first
+          value: 1
+        - name: second
+          value: 2
+    path: /items/*/name
+    result:
+      - first
+      - second
+
+  # Scalar Wildcard
+
+  - id: wildcard-006
+    description: Wildcard on scalar (empty)
+    document: hello
+    path: /*
+    result: []
+
+  - id: wildcard-007
+    description: Wildcard on empty mapping
+    document: {}
+    path: /*
+    result: []
+
+  - id: wildcard-008
+    description: Wildcard on empty sequence
+    document: []
+    path: /*
+    result: []
+
+---
+suite: recursive
+description: Recursive descent tests
+
+tests:
+
+  # Basic Recursive Descent
+
+  - id: recursive-001
+    description: All nodes from root
+    document:
+      a: 1
+    path: /**
+    result:
+      - {a: 1}
+      - 1
+
+  - id: recursive-002
+    description: Find all matching keys
+    document:
+      name: root
+      child:
+        name: child1
+        nested:
+          name: child2
+    path: /**/name
+    result:
+      - root
+      - child1
+      - child2
+
+  - id: recursive-003
+    description: Recursive on sequence
+    document:
+      items:
+        - id: 1
+          sub:
+            - id: 2
+            - id: 3
+        - id: 4
+    path: /**/id
+    result:
+      - 1
+      - 2
+      - 3
+      - 4
+
+  - id: recursive-004
+    description: Recursive then filter
+    document:
+      users:
+        - name: Alice
+          active: true
+        - name: Bob
+          active: false
+      admins:
+        - name: Charlie
+          active: true
+    path: /**/name
+    result:
+      - Alice
+      - Bob
+      - Charlie
+
+  - id: recursive-005
+    description: Recursive on scalar (self only)
+    document: hello
+    path: /**
+    result:
+      - hello
+
+  - id: recursive-006
+    description: Recursive depth test
+    document:
+      l1:
+        l2:
+          l3:
+            l4:
+              value: deep
+    path: /**/value
+    result:
+      - deep
+
+---
+suite: filter
+description: Filter expression tests
+
+tests:
+
+  # Comparison Filters
+
+  - id: filter-001
+    description: Equality filter
+    document:
+      items:
+        - name: apple
+          type: fruit
+        - name: carrot
+          type: vegetable
+        - name: banana
+          type: fruit
+    path: /items[?@.type == "fruit"]
+    result:
+      - {name: apple, type: fruit}
+      - {name: banana, type: fruit}
+
+  - id: filter-002
+    description: Inequality filter
+    document:
+      items:
+        - name: apple
+          type: fruit
+        - name: carrot
+          type: vegetable
+    path: /items[?@.type != "fruit"]
+    result:
+      - {name: carrot, type: vegetable}
+
+  - id: filter-003
+    description: Less than filter
+    document:
+      products:
+        - name: cheap
+          price: 5
+        - name: medium
+          price: 15
+        - name: expensive
+          price: 50
+    path: /products[?@.price < 20]
+    result:
+      - {name: cheap, price: 5}
+      - {name: medium, price: 15}
+
+  - id: filter-004
+    description: Greater than filter
+    document:
+      products:
+        - name: cheap
+          price: 5
+        - name: expensive
+          price: 50
+    path: /products[?@.price > 10]
+    result:
+      - {name: expensive, price: 50}
+
+  - id: filter-005
+    description: Less than or equal
+    document:
+      values:
+        - n: 1
+        - n: 2
+        - n: 3
+    path: /values[?@.n <= 2]
+    result:
+      - {n: 1}
+      - {n: 2}
+
+  - id: filter-006
+    description: Greater than or equal
+    document:
+      values:
+        - n: 1
+        - n: 2
+        - n: 3
+    path: /values[?@.n >= 2]
+    result:
+      - {n: 2}
+      - {n: 3}
+
+  # Logical Filters
+
+  - id: filter-007
+    description: Logical AND
+    document:
+      items:
+        - x: 1
+          y: 1
+        - x: 1
+          y: 2
+        - x: 2
+          y: 1
+    path: /items[?@.x == 1 && @.y == 1]
+    result:
+      - {x: 1, y: 1}
+
+  - id: filter-008
+    description: Logical OR
+    document:
+      items:
+        - x: 1
+        - x: 2
+        - x: 3
+    path: /items[?@.x == 1 || @.x == 3]
+    result:
+      - {x: 1}
+      - {x: 3}
+
+  - id: filter-009
+    description: Logical NOT
+    document:
+      items:
+        - active: true
+        - active: false
+        - active: true
+    path: /items[?!@.active]
+    result:
+      - {active: false}
+
+  - id: filter-010
+    description: Complex logical expression
+    document:
+      items:
+        - a: 1
+          b: 1
+        - a: 1
+          b: 2
+        - a: 2
+          b: 1
+        - a: 2
+          b: 2
+    path: /items[?(@.a == 1 && @.b == 2) || (@.a == 2 && @.b == 1)]
+    result:
+      - {a: 1, b: 2}
+      - {a: 2, b: 1}
+
+  # Arithmetic in Filters
+
+  - id: filter-011
+    description: Addition in filter
+    document:
+      items:
+        - a: 5
+          b: 5
+        - a: 3
+          b: 4
+    path: /items[?@.a + @.b == 10]
+    result:
+      - {a: 5, b: 5}
+
+  - id: filter-012
+    description: Multiplication in filter
+    document:
+      items:
+        - width: 4
+          height: 5
+        - width: 3
+          height: 3
+    path: /items[?@.width * @.height > 15]
+    result:
+      - {width: 4, height: 5}
+
+  - id: filter-013
+    description: Subtraction in filter
+    document:
+      items:
+        - start: 10
+          end: 15
+        - start: 5
+          end: 6
+    path: /items[?@.end - @.start >= 5]
+    result:
+      - {start: 10, end: 15}
+
+  # Nested Path in Filters
+
+  - id: filter-014
+    description: Nested path in filter
+    document:
+      users:
+        - profile:
+            verified: true
+          name: Alice
+        - profile:
+            verified: false
+          name: Bob
+    path: /users[?@.profile.verified == true]
+    result:
+      - {profile: {verified: true}, name: Alice}
+
+  - id: filter-015
+    description: Filter with index access
+    document:
+      records:
+        - tags:
+            - important
+            - urgent
+        - tags:
+            - normal
+    path: /records[?@.tags[0] == "important"]
+    result:
+      - {tags: [important, urgent]}
+
+  # Filter Edge Cases
+
+  - id: filter-016
+    description: Filter with no matches
+    document:
+      items:
+        - x: 1
+        - x: 2
+    path: /items[?@.x == 99]
+    result: []
+
+  - id: filter-017
+    description: Filter on empty sequence
+    document:
+      items: []
+    path: /items[?@.x == 1]
+    result: []
+
+  - id: filter-018
+    description: Filter with null comparison
+    document:
+      items:
+        - value: null
+        - value: 1
+    path: /items[?@.value == null]
+    result:
+      - {value: null}
+
+  - id: filter-019
+    description: Filter with boolean true
+    document:
+      items:
+        - enabled: true
+        - enabled: false
+    path: /items[?@.enabled]
+    result:
+      - {enabled: true}
+
+  - id: filter-020
+    description: Filter with string literal
+    document:
+      items:
+        - name: "hello world"
+        - name: "goodbye"
+    path: /items[?@.name == "hello world"]
+    result:
+      - {name: "hello world"}
+
+---
+suite: alias
+description: Anchor and alias tests
+
+tests:
+
+  # Basic Alias Resolution
+
+  - id: alias-001
+    description: Resolve simple alias
+    document:
+      defaults: &defaults
+        timeout: 30
+        retries: 3
+      server:
+        <<: *defaults
+    path: /*defaults
+    result:
+      - {timeout: 30, retries: 3}
+
+  - id: alias-002
+    description: Alias in path navigation
+    document:
+      base: &base
+        value: 100
+      derived:
+        ref: *base
+    path: /derived/ref/value
+    result:
+      - 100
+
+  - id: alias-003
+    description: Multiple anchors
+    document:
+      first: &a
+        id: 1
+      second: &b
+        id: 2
+      refs:
+        - *a
+        - *b
+    path: /*a/id
+    result:
+      - 1
+
+  - id: alias-004
+    description: Nonexistent anchor
+    document:
+      foo: bar
+    path: /*missing
+    result: []
+
+---
+suite: edge
+description: Edge cases and special scenarios
+
+tests:
+
+  # Empty Documents
+
+  - id: edge-001
+    description: Empty mapping
+    document: {}
+    path: /foo
+    result: []
+
+  - id: edge-002
+    description: Empty sequence
+    document: []
+    path: /[0]
+    result: []
+
+  - id: edge-003
+    description: Null document
+    document: null
+    path: /
+    result:
+      - null
+
+  # Complex Keys
+
+  - id: edge-004
+    description: Numeric string key
+    document:
+      "123": numeric key
+    path: /123
+    result:
+      - numeric key
+
+  - id: edge-005
+    description: Key with spaces (quoted)
+    document:
+      "hello world": value
+    path: /"hello world"
+    result:
+      - value
+
+  # Deep Nesting
+
+  - id: edge-006
+    description: Very deep nesting
+    document:
+      a:
+        b:
+          c:
+            d:
+              e:
+                f:
+                  g:
+                    h: deep
+    path: /a/b/c/d/e/f/g/h
+    result:
+      - deep
+
+  # Mixed Structures
+
+  - id: edge-007
+    description: Sequence in mapping in sequence
+    document:
+      - name: group1
+        members:
+          - alice
+          - bob
+      - name: group2
+        members:
+          - charlie
+    path: /[0]/members[1]
+    result:
+      - bob
+
+  - id: edge-008
+    description: Mapping in sequence in mapping
+    document:
+      data:
+        items:
+          - key: a
+            value: 1
+          - key: b
+            value: 2
+    path: /data/items[*]/key
+    result:
+      - a
+      - b
+
+  # Chained Operations
+
+  - id: edge-009
+    description: Filter then index
+    document:
+      items:
+        - type: a
+          values: [1, 2, 3]
+        - type: b
+          values: [4, 5, 6]
+    path: /items[?@.type == "a"]/values[0]
+    result:
+      - 1
+
+  - id: edge-010
+    description: Recursive then filter
+    document:
+      root:
+        items:
+          - score: 10
+          - score: 20
+        nested:
+          items:
+            - score: 30
+    path: /**/items[?@.score > 15]
+    result:
+      - {score: 20}
+      - {score: 30}
+
+---
+suite: errors
+description: Syntax and evaluation error tests
+
+tests:
+
+  # Syntax Errors
+
+  - id: error-001
+    description: Unclosed bracket
+    document:
+      items: [1, 2, 3]
+    path: /items[0
+    error: syntax
+
+  - id: error-002
+    description: Invalid filter syntax
+    document:
+      items: [1, 2, 3]
+    path: /items[? ==]
+    error: syntax
+
+  - id: error-003
+    description: Empty path segment
+    document:
+      foo: bar
+    path: /foo//bar
+    error: syntax
+
+  - id: error-004
+    description: Invalid identifier start
+    document:
+      foo: bar
+    path: /123abc
+    error: syntax
+
+  - id: error-005
+    description: Unclosed string in filter
+    document:
+      items:
+        - name: test
+    path: /items[?@.name == "unclosed]
+    error: syntax
+
+  - id: error-006
+    description: Invalid operator
+    document:
+      items:
+        - x: 1
+    path: /items[?@.x <> 1]
+    error: syntax

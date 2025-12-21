@@ -45,7 +45,7 @@ jobs:
       - name: Setup test suite (Windows)
         if: startsWith(matrix.os, 'windows')
         run: |
-          cd refs\yaml-test-suite
+          cd refs/yaml-test-suite
           git fetch origin data:data
           make data
         shell: bash

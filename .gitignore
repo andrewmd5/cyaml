@@ -1,4 +1,5 @@
-refs/
+refs/*
+!refs/ypath/
 ref/
 build/
 .DS_Store
