@@ -285,7 +285,7 @@ static inline bool needs_quoting(const char* s)
     if (CYAML_IS_INDICATOR(*s) || CYAML_IS_WHITE(*s))
         return true;
 
-    size_t len = strnlen(s, BUILDF_BUF_SIZE);
+    size_t len = cyaml_strnlen(s, BUILDF_BUF_SIZE);
     if (len >= BUILDF_BUF_SIZE)
         return true;
 

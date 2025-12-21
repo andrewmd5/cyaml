@@ -610,6 +610,24 @@ size_t cyaml_strlcpy(char* dst, const char* src, size_t dst_size)
 #endif
 }
 
+size_t cyaml_strnlen(const char* s, size_t max)
+{
+    if (!s || max == 0)
+        return 0;
+
+#if defined(__GLIBC__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+    return strnlen(s, max);
+#elif defined(_WIN32)
+    return strnlen_s(s, max);
+#else
+    const char* p = s;
+    const char* end = s + max;
+    while (p < end && *p)
+        p++;
+    return (size_t)(p - s);
+#endif
+}
+
 // #endregion
 
 // #region Number Parsing

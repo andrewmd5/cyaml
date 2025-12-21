@@ -172,6 +172,12 @@ char* cyaml_strndup(const char* s, size_t n);
 //! @return Length of string copied (excluding null terminator)
 size_t cyaml_strlcpy(char* dst, const char* src, size_t dst_size);
 
+//! Portable strnlen - get string length up to max bytes
+//! @param s    String to measure (NULL safe)
+//! @param max  Maximum bytes to scan
+//! @return Length of string, or max if no null found within max bytes
+size_t cyaml_strnlen(const char* s, size_t max);
+
 // #endregion
 
 // #region Number Parsing (locale-independent)
