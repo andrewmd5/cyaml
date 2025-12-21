@@ -1,4 +1,5 @@
 #include "cyaml.h"
+#include "cyaml_utf8.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,7 +75,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    char* yaml_unescaped = strdup(yaml);
+    char* yaml_unescaped = cyaml_strdup(yaml);
     char* w = yaml_unescaped;
     for (const char* r = yaml; *r; r++) {
         if (*r == '\\' && *(r + 1) == 'n') {
