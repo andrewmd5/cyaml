@@ -69,9 +69,11 @@ jobs:
       - name: Build (Unix)
         if: "!startsWith(matrix.os, 'windows')"
         run: |
-          CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
+          CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Debug"
           if [ -n "${{ matrix.cmake_arch }}" ]; then
             CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }}"
+          elif [[ "$OSTYPE" == darwin* ]]; then
+            CMAKE_ARGS="$CMAKE_ARGS -DCYAML_ENABLE_ASAN=ON -DCYAML_ENABLE_UBSAN=ON"
           fi
           cmake -B build $CMAKE_ARGS
           cmake --build build -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
@@ -80,7 +82,7 @@ jobs:
         if: startsWith(matrix.os, 'windows')
         run: |
           cmake -S . -B build -A ${{ matrix.arch }}
-          cmake --build build --config Release
+          cmake --build build --config Debug
 
       - name: Test (Unix)
         if: "!startsWith(matrix.os, 'windows')"
@@ -94,9 +96,9 @@ jobs:
         if: startsWith(matrix.os, 'windows')
         working-directory: build
         run: |
-          .\Release\cyaml_suite.exe ..\refs\yaml-test-suite\data
-          .\Release\ypath_test.exe ..\refs\ypath\tests.yml
-          .\Release\test_api.exe
+          .\Debug\cyaml_suite.exe ..\refs\yaml-test-suite\data
+          .\Debug\ypath_test.exe ..\refs\ypath\tests.yml
+          .\Debug\test_api.exe
 
       - name: Generate summary (Unix)
         if: "!startsWith(matrix.os, 'windows') && always()"
@@ -105,7 +107,7 @@ jobs:
       - name: Generate summary (Windows)
         if: startsWith(matrix.os, 'windows') && always()
         working-directory: build
-        run: .\Release\summary_gen.exe >> $env:GITHUB_STEP_SUMMARY
+        run: .\Debug\summary_gen.exe >> $env:GITHUB_STEP_SUMMARY
         shell: pwsh
 
       - name: Save test results cache
@@ -137,8 +139,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist\lib
           New-Item -ItemType Directory -Force -Path dist\include
           Copy-Item src\cyaml.h dist\include\
-          Copy-Item build\Release\cyaml.lib dist\lib\ -ErrorAction SilentlyContinue
-          Copy-Item build\Release\cyaml.dll dist\lib\ -ErrorAction SilentlyContinue
+          Copy-Item build\Debug\cyaml.lib dist\lib\ -ErrorAction SilentlyContinue
+          Copy-Item build\Debug\cyaml.dll dist\lib\ -ErrorAction SilentlyContinue
+          Copy-Item build\Debug\cyaml.pdb dist\lib\ -ErrorAction SilentlyContinue
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
