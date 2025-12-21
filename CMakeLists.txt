@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 project(cyaml
     VERSION 0.0.0
-    DESCRIPTION "Ultralightweight YAML parser in C11"
+    DESCRIPTION "Ultralightweight YAML parser & emitter in C11"
     LANGUAGES C
 )
 
