@@ -64,6 +64,14 @@ void test_cyaml_parse_simple_map(void)
     TEST_ASSERT_NOT_NULL(cyaml_root(doc));
     TEST_ASSERT_TRUE(cyaml_is_map(cyaml_root(doc)));
     TEST_ASSERT_EQUAL_UINT32(1, cyaml_map_len(cyaml_root(doc)));
+
+    
+    cyaml_pair_t* pair = cyaml_map_at(cyaml_root(doc), 0);
+    TEST_ASSERT_NOT_NULL(pair);
+    TEST_ASSERT_NOT_NULL(pair->key);
+    TEST_ASSERT_NOT_NULL(pair->val);
+    TEST_ASSERT_TRUE(cyaml_span_eq(doc, pair->key->span, "key"));
+    TEST_ASSERT_TRUE(cyaml_span_eq(doc, pair->val->span, "value"));
     cyaml_free(doc);
 }
 
@@ -76,6 +84,15 @@ void test_cyaml_parse_simple_seq(void)
     TEST_ASSERT_NOT_NULL(cyaml_root(doc));
     TEST_ASSERT_TRUE(cyaml_is_seq(cyaml_root(doc)));
     TEST_ASSERT_EQUAL_UINT32(3, cyaml_seq_len(cyaml_root(doc)));
+
+    
+    const char* expected[] = { "one", "two", "three" };
+    for (uint32_t i = 0; i < cyaml_seq_len(cyaml_root(doc)); i++) {
+        cyaml_node_t* item = cyaml_seq_get(cyaml_root(doc), i);
+        TEST_ASSERT_NOT_NULL(item);
+        TEST_ASSERT_TRUE(cyaml_is_scalar(item));
+        TEST_ASSERT_TRUE(cyaml_span_eq(doc, item->span, expected[i]));
+    }
     cyaml_free(doc);
 }
 
@@ -121,6 +138,17 @@ void test_cyaml_parse_stream_multi_doc(void)
     cyaml_stream_t* stream = cyaml_parse_stream(yaml, strlen(yaml), NULL, &err);
     TEST_ASSERT_NOT_NULL(stream);
     TEST_ASSERT_EQUAL_UINT32(3, cyaml_stream_count(stream));
+
+    
+    const char* expected[] = { "first", "second", "third" };
+    for (uint32_t i = 0; i < 3; i++) {
+        cyaml_doc_t* doc = cyaml_stream_doc(stream, i);
+        TEST_ASSERT_NOT_NULL(doc);
+        cyaml_node_t* root = cyaml_root(doc);
+        TEST_ASSERT_NOT_NULL(root);
+        TEST_ASSERT_TRUE(cyaml_is_scalar(root));
+        TEST_ASSERT_TRUE(cyaml_span_eq(doc, root->span, expected[i]));
+    }
     cyaml_stream_free(stream);
 }
 
@@ -569,6 +597,14 @@ void test_cyaml_seq_len(void)
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     TEST_ASSERT_NOT_NULL(doc);
     TEST_ASSERT_EQUAL_UINT32(3, cyaml_seq_len(cyaml_root(doc)));
+
+    
+    const char* expected[] = { "a", "b", "c" };
+    for (uint32_t i = 0; i < 3; i++) {
+        cyaml_node_t* item = cyaml_seq_get(cyaml_root(doc), i);
+        TEST_ASSERT_NOT_NULL(item);
+        TEST_ASSERT_TRUE(cyaml_span_eq(doc, item->span, expected[i]));
+    }
     cyaml_free(doc);
 }
 
@@ -614,6 +650,18 @@ void test_cyaml_map_len(void)
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     TEST_ASSERT_NOT_NULL(doc);
     TEST_ASSERT_EQUAL_UINT32(3, cyaml_map_len(cyaml_root(doc)));
+
+    
+    const char* keys[] = { "a", "b", "c" };
+    const char* vals[] = { "1", "2", "3" };
+    for (uint32_t i = 0; i < 3; i++) {
+        cyaml_pair_t* pair = cyaml_map_at(cyaml_root(doc), i);
+        TEST_ASSERT_NOT_NULL(pair);
+        TEST_ASSERT_NOT_NULL(pair->key);
+        TEST_ASSERT_NOT_NULL(pair->val);
+        TEST_ASSERT_TRUE(cyaml_span_eq(doc, pair->key->span, keys[i]));
+        TEST_ASSERT_TRUE(cyaml_span_eq(doc, pair->val->span, vals[i]));
+    }
     cyaml_free(doc);
 }
 
@@ -1171,10 +1219,39 @@ void test_iteration_macros(void)
     cyaml_node_t* root = cyaml_root(doc);
     cyaml_node_t* item;
     uint32_t count = 0;
+    const char* expected[] = { "a", "b", "c" };
 
     CYAML_EACH_SEQ(root, item, i)
     {
         TEST_ASSERT_NOT_NULL(item);
+        TEST_ASSERT_TRUE(cyaml_is_scalar(item));
+        TEST_ASSERT_TRUE(cyaml_span_eq(doc, item->span, expected[i]));
+        count++;
+    }
+    TEST_ASSERT_EQUAL_UINT32(3, count);
+
+    cyaml_free(doc);
+
+    // Test CYAML_EACH_MAP
+    const char* yaml_map = "x: 1\ny: 2\nz: 3";
+    doc = cyaml_parse(yaml_map, strlen(yaml_map), NULL, &err);
+    TEST_ASSERT_NOT_NULL(doc);
+
+    root = cyaml_root(doc);
+    cyaml_pair_t* pair;
+    count = 0;
+    const char* exp_keys[] = { "x", "y", "z" };
+    const char* exp_vals[] = { "1", "2", "3" };
+
+    CYAML_EACH_MAP(root, pair, j)
+    {
+        TEST_ASSERT_NOT_NULL(pair);
+        TEST_ASSERT_NOT_NULL(pair->key);
+        TEST_ASSERT_NOT_NULL(pair->val);
+        TEST_ASSERT_TRUE(cyaml_is_scalar(pair->key));
+        TEST_ASSERT_TRUE(cyaml_is_scalar(pair->val));
+        TEST_ASSERT_TRUE(cyaml_span_eq(doc, pair->key->span, exp_keys[j]));
+        TEST_ASSERT_TRUE(cyaml_span_eq(doc, pair->val->span, exp_vals[j]));
         count++;
     }
     TEST_ASSERT_EQUAL_UINT32(3, count);
@@ -1190,6 +1267,16 @@ void test_flow_style(void)
     TEST_ASSERT_NOT_NULL(doc);
     TEST_ASSERT_TRUE(cyaml_is_map(cyaml_root(doc)));
     TEST_ASSERT_EQUAL_UINT32(2, cyaml_map_len(cyaml_root(doc)));
+
+    
+    cyaml_node_t* key_val = cyaml_get(doc, cyaml_root(doc), "key");
+    cyaml_node_t* num_val = cyaml_get(doc, cyaml_root(doc), "num");
+    TEST_ASSERT_NOT_NULL(key_val);
+    TEST_ASSERT_NOT_NULL(num_val);
+    TEST_ASSERT_TRUE(cyaml_span_eq(doc, key_val->span, "value"));
+    int64_t num;
+    TEST_ASSERT_TRUE(cyaml_as_int(doc, num_val, &num));
+    TEST_ASSERT_EQUAL_INT64(123, num);
     cyaml_free(doc);
 }
 
@@ -1201,6 +1288,14 @@ void test_flow_sequence(void)
     TEST_ASSERT_NOT_NULL(doc);
     TEST_ASSERT_TRUE(cyaml_is_seq(cyaml_root(doc)));
     TEST_ASSERT_EQUAL_UINT32(3, cyaml_seq_len(cyaml_root(doc)));
+
+    
+    const char* expected[] = { "one", "two", "three" };
+    for (uint32_t i = 0; i < 3; i++) {
+        cyaml_node_t* item = cyaml_seq_get(cyaml_root(doc), i);
+        TEST_ASSERT_NOT_NULL(item);
+        TEST_ASSERT_TRUE(cyaml_span_eq(doc, item->span, expected[i]));
+    }
     cyaml_free(doc);
 }
 
@@ -1234,7 +1329,7 @@ void test_folded_string(void)
     cyaml_free(doc);
 }
 
-// Anchor and Alias Management Tests
+
 
 void test_cyaml_set_anchor(void)
 {
@@ -1275,7 +1370,7 @@ void test_cyaml_new_alias_no_anchor(void)
 {
     cyaml_doc_t* doc = cyaml_doc_new();
     cyaml_node_t* target = cyaml_new_cstr(doc, "value");
-    // No anchor set - should fail
+    
     cyaml_node_t* alias = cyaml_new_alias(doc, target);
     TEST_ASSERT_NULL(alias);
     cyaml_free(doc);
@@ -1318,7 +1413,7 @@ void test_cyaml_find_anchor_nested(void)
     cyaml_free(doc);
 }
 
-// Node Copy Tests
+
 
 void test_cyaml_node_copy_scalar(void)
 {
@@ -1387,7 +1482,7 @@ void test_cyaml_node_copy_deep(void)
     cyaml_free(doc);
 }
 
-// Map Merge Tests
+
 
 void test_cyaml_map_merge_simple(void)
 {
@@ -1427,14 +1522,14 @@ void test_cyaml_map_merge_deep(void)
 {
     cyaml_doc_t* doc = cyaml_doc_new();
 
-    // dst: {config: {port: 80, host: "localhost"}}
+    
     cyaml_node_t* dst = cyaml_new_map(doc);
     cyaml_node_t* dst_config = cyaml_new_map(doc);
     cyaml_map_set(doc, dst_config, "port", cyaml_new_int(doc, 80));
     cyaml_map_set(doc, dst_config, "host", cyaml_new_cstr(doc, "localhost"));
     cyaml_map_set(doc, dst, "config", dst_config);
 
-    // src: {config: {port: 8080, debug: true}}
+    
     cyaml_node_t* src = cyaml_new_map(doc);
     cyaml_node_t* src_config = cyaml_new_map(doc);
     cyaml_map_set(doc, src_config, "port", cyaml_new_int(doc, 8080));
@@ -1443,22 +1538,22 @@ void test_cyaml_map_merge_deep(void)
 
     TEST_ASSERT_TRUE(cyaml_map_merge(doc, dst, src));
 
-    // Check merged result
+    
     cyaml_node_t* merged_config = cyaml_get(doc, dst, "config");
     TEST_ASSERT_NOT_NULL(merged_config);
     TEST_ASSERT_EQUAL_UINT32(3, cyaml_map_len(merged_config));
 
     int64_t port;
     TEST_ASSERT_TRUE(cyaml_as_int(doc, cyaml_get(doc, merged_config, "port"), &port));
-    TEST_ASSERT_EQUAL_INT64(8080, port); // Overwritten
+    TEST_ASSERT_EQUAL_INT64(8080, port); 
 
-    TEST_ASSERT_TRUE(cyaml_has(doc, merged_config, "host")); // Preserved
-    TEST_ASSERT_TRUE(cyaml_has(doc, merged_config, "debug")); // Added
+    TEST_ASSERT_TRUE(cyaml_has(doc, merged_config, "host")); 
+    TEST_ASSERT_TRUE(cyaml_has(doc, merged_config, "debug")); 
 
     cyaml_free(doc);
 }
 
-// Resolve Aliases Tests
+
 
 void test_cyaml_resolve_aliases(void)
 {
@@ -1473,14 +1568,14 @@ void test_cyaml_resolve_aliases(void)
 
     TEST_ASSERT_TRUE(cyaml_resolve_aliases(doc));
 
-    // After resolution, aliases should be replaced with copies
+    
     TEST_ASSERT_TRUE(cyaml_is_scalar(cyaml_seq_get(root, 1)));
     TEST_ASSERT_TRUE(cyaml_is_scalar(cyaml_seq_get(root, 2)));
 
     cyaml_free(doc);
 }
 
-// Comment Access Tests
+
 
 void test_cyaml_comment_count_null(void)
 {
@@ -1493,7 +1588,7 @@ void test_cyaml_comment_count_no_comments_option(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
     TEST_ASSERT_NOT_NULL(doc);
-    // Without opts.comments = true, comment count should be 0
+    
     TEST_ASSERT_EQUAL_UINT32(0, cyaml_comment_count(doc));
     cyaml_free(doc);
 }
@@ -1505,7 +1600,7 @@ void test_cyaml_comment_count_with_comments(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
-    // Should have captured comments
+    
     TEST_ASSERT_TRUE(cyaml_comment_count(doc) >= 1);
     cyaml_free(doc);
 }
@@ -1524,7 +1619,7 @@ void test_cyaml_comment_at_out_of_bounds(void)
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), &opts, &err);
     TEST_ASSERT_NOT_NULL(doc);
-    // Access way out of bounds
+    
     cyaml_span_t span = cyaml_comment_at(doc, 1000);
     TEST_ASSERT_EQUAL_UINT32(0, span.len);
     cyaml_free(doc);
@@ -1540,7 +1635,7 @@ void test_cyaml_comment_at_valid(void)
     if (cyaml_comment_count(doc) > 0) {
         cyaml_span_t span = cyaml_comment_at(doc, 0);
         TEST_ASSERT_TRUE(span.len > 0);
-        // Verify we can get the comment text
+        
         const char* ptr = cyaml_span_ptr(doc, span);
         TEST_ASSERT_NOT_NULL(ptr);
     }
@@ -1560,13 +1655,13 @@ void test_cyaml_comment_multiple(void)
         cyaml_span_t span1 = cyaml_comment_at(doc, 1);
         TEST_ASSERT_TRUE(span0.len > 0);
         TEST_ASSERT_TRUE(span1.len > 0);
-        // Comments should be at different offsets
+        
         TEST_ASSERT_NOT_EQUAL(span0.off, span1.off);
     }
     cyaml_free(doc);
 }
 
-// Comment Emit Tests
+
 
 void test_cyaml_emit_with_comments_disabled(void)
 {
@@ -1718,7 +1813,7 @@ void test_cyaml_emit_seq_complex_comments(void)
     cyaml_free(doc);
 }
 
-// Key Sorting Tests
+
 
 void test_cyaml_map_sort_alphabetical(void)
 {
@@ -1730,7 +1825,7 @@ void test_cyaml_map_sort_alphabetical(void)
 
     TEST_ASSERT_TRUE(cyaml_map_sort(doc, map, NULL));
 
-    // Check order: apple, mango, zebra
+    
     cyaml_pair_t* p0 = cyaml_map_at(map, 0);
     cyaml_pair_t* p1 = cyaml_map_at(map, 1);
     cyaml_pair_t* p2 = cyaml_map_at(map, 2);
@@ -1747,7 +1842,7 @@ static int reverse_cmp(const cyaml_doc_t* doc, const cyaml_node_t* a, const cyam
     const char* src = cyaml_src(doc);
     if (!src || !a || !b)
         return 0;
-    // Reverse alphabetical
+    
     size_t la = a->span.len, lb = b->span.len;
     size_t min_len = la < lb ? la : lb;
     int cmp = memcmp(src + a->span.off, src + b->span.off, min_len);
@@ -1766,7 +1861,7 @@ void test_cyaml_map_sort_custom(void)
 
     TEST_ASSERT_TRUE(cyaml_map_sort(doc, map, reverse_cmp));
 
-    // Reverse order: zebra, mango, apple
+    
     cyaml_pair_t* p0 = cyaml_map_at(map, 0);
     cyaml_pair_t* p1 = cyaml_map_at(map, 1);
     cyaml_pair_t* p2 = cyaml_map_at(map, 2);
@@ -1792,11 +1887,11 @@ void test_cyaml_map_sort_recursive(void)
 
     TEST_ASSERT_TRUE(cyaml_map_sort_recursive(doc, root, NULL));
 
-    // Root should be sorted
+    
     TEST_ASSERT_TRUE(cyaml_span_eq(doc, cyaml_map_at(root, 0)->key->span, "a"));
     TEST_ASSERT_TRUE(cyaml_span_eq(doc, cyaml_map_at(root, 1)->key->span, "z"));
 
-    // Nested should also be sorted
+    
     cyaml_node_t* sorted_nested = cyaml_get(doc, root, "a");
     TEST_ASSERT_TRUE(cyaml_span_eq(doc, cyaml_map_at(sorted_nested, 0)->key->span, "a"));
     TEST_ASSERT_TRUE(cyaml_span_eq(doc, cyaml_map_at(sorted_nested, 1)->key->span, "z"));
@@ -1804,7 +1899,7 @@ void test_cyaml_map_sort_recursive(void)
     cyaml_free(doc);
 }
 
-// Scanf API
+
 void test_cyaml_scanf_basic(void)
 {
     const char* yaml = "server:\n  host: localhost\n  port: 8080\n  ssl: true";
@@ -1897,7 +1992,7 @@ void test_cyaml_node_scanf_relative(void)
     cyaml_free(doc);
 }
 
-// Buildf API
+
 void test_cyaml_buildf_scalar(void)
 {
     cyaml_doc_t* doc = cyaml_doc_new();
@@ -1970,7 +2065,7 @@ void test_cyaml_buildf_bool(void)
     cyaml_free(doc);
 }
 
-// Insert/Delete API
+
 void test_cyaml_insert_at_simple(void)
 {
     cyaml_doc_t* doc = cyaml_doc_new();
@@ -2036,7 +2131,7 @@ void test_cyaml_append_at(void)
     cyaml_doc_t* doc = cyaml_doc_new();
     TEST_ASSERT_NOT_NULL(doc);
 
-    // Build: items: [one, two]
+    
     cyaml_node_t* root = cyaml_new_map(doc);
     cyaml_node_t* items = cyaml_new_seq(doc);
     cyaml_seq_push(items, cyaml_new_cstr(doc, "one"));
@@ -2057,7 +2152,7 @@ void test_cyaml_appendf(void)
     cyaml_doc_t* doc = cyaml_doc_new();
     TEST_ASSERT_NOT_NULL(doc);
 
-    // Build: users: []
+    
     cyaml_node_t* root = cyaml_new_map(doc);
     cyaml_map_set(doc, root, "users", cyaml_new_seq(doc));
     doc->root = root;
@@ -2183,7 +2278,7 @@ int main(void)
     RUN_TEST(test_multiline_string);
     RUN_TEST(test_folded_string);
 
-    // Anchor and Alias Management
+    
     RUN_TEST(test_cyaml_set_anchor);
     RUN_TEST(test_cyaml_set_anchor_clear);
     RUN_TEST(test_cyaml_new_alias);
@@ -2191,21 +2286,21 @@ int main(void)
     RUN_TEST(test_cyaml_find_anchor);
     RUN_TEST(test_cyaml_find_anchor_nested);
 
-    // Node Copy
+    
     RUN_TEST(test_cyaml_node_copy_scalar);
     RUN_TEST(test_cyaml_node_copy_seq);
     RUN_TEST(test_cyaml_node_copy_map);
     RUN_TEST(test_cyaml_node_copy_deep);
 
-    // Map Merge
+    
     RUN_TEST(test_cyaml_map_merge_simple);
     RUN_TEST(test_cyaml_map_merge_overwrite);
     RUN_TEST(test_cyaml_map_merge_deep);
 
-    // Resolve Aliases
+    
     RUN_TEST(test_cyaml_resolve_aliases);
 
-    // Comment Access
+    
     RUN_TEST(test_cyaml_comment_count_null);
     RUN_TEST(test_cyaml_comment_count_no_comments_option);
     RUN_TEST(test_cyaml_comment_count_with_comments);
@@ -2214,7 +2309,7 @@ int main(void)
     RUN_TEST(test_cyaml_comment_at_valid);
     RUN_TEST(test_cyaml_comment_multiple);
 
-    // Comment Emit
+    
     RUN_TEST(test_cyaml_emit_with_comments_disabled);
     RUN_TEST(test_cyaml_emit_with_comments_enabled);
     RUN_TEST(test_cyaml_emit_inline_comment);
@@ -2224,26 +2319,26 @@ int main(void)
     RUN_TEST(test_cyaml_emit_map_inline_comments);
     RUN_TEST(test_cyaml_emit_seq_complex_comments);
 
-    // Key Sorting
+    
     RUN_TEST(test_cyaml_map_sort_alphabetical);
     RUN_TEST(test_cyaml_map_sort_custom);
     RUN_TEST(test_cyaml_map_sort_recursive);
 
-    // Scanf API
+    
     RUN_TEST(test_cyaml_scanf_basic);
     RUN_TEST(test_cyaml_scanf_integers);
     RUN_TEST(test_cyaml_scanf_floats);
     RUN_TEST(test_cyaml_scanf_node_ptr);
     RUN_TEST(test_cyaml_node_scanf_relative);
 
-    // Buildf API
+    
     RUN_TEST(test_cyaml_buildf_scalar);
     RUN_TEST(test_cyaml_buildf_string);
     RUN_TEST(test_cyaml_buildf_map);
     RUN_TEST(test_cyaml_buildf_seq);
     RUN_TEST(test_cyaml_buildf_bool);
 
-    // Insert/Delete API
+    
     RUN_TEST(test_cyaml_insert_at_simple);
     RUN_TEST(test_cyaml_insert_at_nested);
     RUN_TEST(test_cyaml_insertf);
