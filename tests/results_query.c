@@ -1,3 +1,10 @@
+#if !defined(_WIN32)
+#if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200809L
+#undef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#endif
+
 //! Usage:
 //!   results_query [file]                    Show summary
 //!   results_query [file] list [filter]      List tests (filter: pass|fail|skip|tree|emit|json|dump)

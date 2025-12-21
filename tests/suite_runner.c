@@ -566,7 +566,7 @@ static void run_data_test(const char* test_dir, const char* test_id, int case_nu
 
             rec = record_result(id, name, tree_result, TR_SKIP, TR_SKIP, TR_SKIP);
             if (rec) {
-                strcpy(rec->fail_type, "tree");
+                cyaml_strlcpy(rec->fail_type, "tree", sizeof(rec->fail_type));
                 rec->input = cyaml_strdup(yaml);
                 rec->expected = tree ? cyaml_strdup(tree) : NULL;
                 char errbuf[256];
@@ -587,7 +587,7 @@ static void run_data_test(const char* test_dir, const char* test_id, int case_nu
 
         rec = record_result(id, name, tree_result, TR_SKIP, TR_SKIP, TR_SKIP);
         if (rec) {
-            strcpy(rec->fail_type, "tree");
+            cyaml_strlcpy(rec->fail_type, "tree", sizeof(rec->fail_type));
             rec->input = cyaml_strdup(yaml);
             rec->expected = cyaml_strdup("(expected parse error)");
             rec->got = cyaml_strdup("(parsed ok)");
@@ -713,22 +713,22 @@ static void run_data_test(const char* test_dir, const char* test_id, int case_nu
     rec = record_result(id, name, tree_result, dump_result, emit_result, json_result);
     if (rec) {
         if (tree_result == TR_FAIL) {
-            strcpy(rec->fail_type, "tree");
+            cyaml_strlcpy(rec->fail_type, "tree", sizeof(rec->fail_type));
             rec->input = cyaml_strdup(yaml);
             rec->expected = tree ? cyaml_strdup(tree) : NULL;
             rec->got = got_events ? cyaml_strdup(got_events) : NULL;
         } else if (dump_result == TR_FAIL) {
-            strcpy(rec->fail_type, "dump");
+            cyaml_strlcpy(rec->fail_type, "dump", sizeof(rec->fail_type));
             rec->input = cyaml_strdup(yaml);
             rec->expected = dump ? cyaml_strdup(dump) : NULL;
             rec->got = got_dump ? cyaml_strdup(got_dump) : NULL;
         } else if (emit_result == TR_FAIL) {
-            strcpy(rec->fail_type, "emit");
+            cyaml_strlcpy(rec->fail_type, "emit", sizeof(rec->fail_type));
             rec->input = cyaml_strdup(yaml);
             rec->expected = emit ? cyaml_strdup(emit) : NULL;
             rec->got = got_emit ? cyaml_strdup(got_emit) : NULL;
         } else if (json_result == TR_FAIL) {
-            strcpy(rec->fail_type, "json");
+            cyaml_strlcpy(rec->fail_type, "json", sizeof(rec->fail_type));
             rec->input = cyaml_strdup(yaml);
             rec->expected = json ? cyaml_strdup(json) : NULL;
             rec->got = got_json ? cyaml_strdup(got_json) : NULL;
@@ -855,7 +855,8 @@ int main(int argc, char** argv)
     cyaml_strlcpy(src_dir, dir, sizeof(src_dir));
     char* data_suffix = strstr(src_dir, "/data");
     if (data_suffix && (data_suffix[5] == '\0' || data_suffix[5] == '/')) {
-        strcpy(data_suffix, "/src");
+        size_t remaining = sizeof(src_dir) - (size_t)(data_suffix - src_dir);
+        cyaml_strlcpy(data_suffix, "/src", remaining);
     }
     run_data_dir(dir, src_dir, filter, &s, spec);
 
