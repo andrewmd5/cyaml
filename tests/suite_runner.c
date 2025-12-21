@@ -44,6 +44,14 @@ static char* read_file(const char* path, size_t* len)
     size_t n = fread(buf, 1, (size_t)size, f);
     fclose(f);
     buf[n] = '\0';
+    // Normalize CRLF to LF in-place for cross-platform consistency
+    size_t j = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (buf[i] != '\r')
+            buf[j++] = buf[i];
+    }
+    buf[j] = '\0';
+    n = j;
     if (len)
         *len = n;
     return buf;
@@ -496,8 +504,9 @@ static void run_data_test(const char* test_dir, const char* test_id, int case_nu
     snprintf(path, sizeof(path), "%s/===", test_dir);
     size_t name_len;
     char* name = read_file(path, &name_len);
-    if (name && name_len > 0 && name[name_len - 1] == '\n')
-        name[name_len - 1] = '\0';
+    // Strip trailing CRLF or LF
+    while (name && name_len > 0 && (name[name_len - 1] == '\n' || name[name_len - 1] == '\r'))
+        name[--name_len] = '\0';
 
     snprintf(path, sizeof(path), "%s/in.yaml", test_dir);
     size_t yaml_len;

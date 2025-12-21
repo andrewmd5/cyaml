@@ -104,10 +104,10 @@ typedef struct {
 
 //! Node - minimal metadata, content via spans
 struct cyaml_node {
-    cyaml_type_t type : 4;
-    cyaml_style_t style : 4; //!< Scalar style (or collection style for seq/map)
-    cyaml_chomp_t chomp : 2; //!< Block scalar chomping
-    uint8_t indent : 6; //!< Block scalar explicit indent (0-63)
+    cyaml_type_t type;
+    cyaml_style_t style; //!< Scalar style (or collection style for seq/map)
+    cyaml_chomp_t chomp; //!< Block scalar chomping
+    uint8_t indent; //!< Block scalar explicit indent
     uint8_t leading_breaks; //!< Leading empty lines for block scalars
     uint8_t trailing_breaks; //!< Trailing line breaks for block scalars
 
