@@ -740,7 +740,7 @@ static expr_t* parse_unary(parser_t* p)
         if (!left)                                       \
             return NULL;                                 \
         for (;;) {                                       \
-            op_t op;                                     \
+            op_t op = (op_t)0;                           \
             bool found = false;                          \
             __VA_ARGS__                                  \
             if (!found)                                  \

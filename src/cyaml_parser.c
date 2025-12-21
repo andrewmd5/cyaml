@@ -2443,7 +2443,7 @@ static cyaml_node_t* compose_scalar(composer_t* c, event_t* evt)
     node->anchor = evt->anchor;
     node->tag = evt->tag;
     node->chomp = evt->chomp;
-    node->indent = evt->indent;
+    node->indent = (uint8_t)(evt->indent & 0x3F);
     node->leading_breaks = evt->leading_breaks;
     node->trailing_breaks = evt->trailing_breaks;
     node->scalar.flags = evt->scalar_flags;
@@ -2469,7 +2469,7 @@ static cyaml_node_t* compose_sequence(composer_t* c, event_t* evt)
         return NULL;
 
     node->type = CYAML_SEQ;
-    node->style = evt->block ? (cyaml_style_t)CYAML_BLOCK : (cyaml_style_t)CYAML_FLOW;
+    node->style = (cyaml_style_t)(evt->block ? CYAML_BLOCK : CYAML_FLOW);
     node->anchor = evt->anchor;
     node->tag = evt->tag;
     node->span.start_line = evt->value.start_line;
@@ -2534,7 +2534,7 @@ static cyaml_node_t* compose_mapping(composer_t* c, event_t* evt)
         return NULL;
 
     node->type = CYAML_MAP;
-    node->style = evt->block ? (cyaml_style_t)CYAML_BLOCK : (cyaml_style_t)CYAML_FLOW;
+    node->style = (cyaml_style_t)(evt->block ? CYAML_BLOCK : CYAML_FLOW);
     node->anchor = evt->anchor;
     node->tag = evt->tag;
     node->span.start_line = evt->value.start_line;

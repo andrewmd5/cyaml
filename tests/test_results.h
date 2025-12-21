@@ -8,6 +8,16 @@
 #include <string.h>
 #include <time.h>
 
+// Portable localtime wrapper
+static inline struct tm* tr_localtime(const time_t* timer, struct tm* result)
+{
+#ifdef _WIN32
+    return localtime_s(result, timer) == 0 ? result : NULL;
+#else
+    return localtime_r(timer, result);
+#endif
+}
+
 #define TR_MAX_TESTS 1024
 #define TR_MAX_CONTENT 8192
 
@@ -365,8 +375,9 @@ void tr_compute_changes(tr_results_t* curr, tr_results_t* prev)
     curr->imp_count = 0;
 
     time_t now = time(NULL);
+    struct tm tm_buf;
     char datebuf[32];
-    strftime(datebuf, sizeof(datebuf), "%Y-%m-%d", localtime(&now));
+    strftime(datebuf, sizeof(datebuf), "%Y-%m-%d", tr_localtime(&now, &tm_buf));
 
     for (int i = 0; i < curr->test_count; i++) {
         tr_test_t* ct = &curr->tests[i];
@@ -443,8 +454,9 @@ bool tr_save(const char* path, tr_results_t* r)
     cyaml_set_root(doc, root);
 
     time_t now = time(NULL);
+    struct tm tm_buf2;
     char timebuf[64];
-    strftime(timebuf, sizeof(timebuf), "%Y-%m-%dT%H:%M:%S", localtime(&now));
+    strftime(timebuf, sizeof(timebuf), "%Y-%m-%dT%H:%M:%S", tr_localtime(&now, &tm_buf2));
 
     cyaml_map_set(doc, root, "version", cyaml_new_cstr(doc, "2"));
     cyaml_map_set(doc, root, "date", cyaml_new_cstr(doc, timebuf));

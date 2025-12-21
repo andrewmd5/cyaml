@@ -286,23 +286,17 @@ static void cmd_broken(tr_results_t* r)
         }
 
         char status[64] = "";
+        char* p = status;
+        char* end = status + sizeof(status);
         if (t->tree == TR_FAIL)
-            strcat(status, "tree");
-        if (t->emit == TR_FAIL) {
-            if (status[0])
-                strcat(status, ",");
-            strcat(status, "emit");
-        }
-        if (t->json == TR_FAIL) {
-            if (status[0])
-                strcat(status, ",");
-            strcat(status, "json");
-        }
-        if (t->dump == TR_FAIL) {
-            if (status[0])
-                strcat(status, ",");
-            strcat(status, "dump");
-        }
+            p += snprintf(p, (size_t)(end - p), "%s", "tree");
+        if (t->emit == TR_FAIL)
+            p += snprintf(p, (size_t)(end - p), "%s%s", p > status ? "," : "", "emit");
+        if (t->json == TR_FAIL)
+            p += snprintf(p, (size_t)(end - p), "%s%s", p > status ? "," : "", "json");
+        if (t->dump == TR_FAIL)
+            p += snprintf(p, (size_t)(end - p), "%s%s", p > status ? "," : "", "dump");
+        (void)p;
 
         printf("%-10s %-12s %-12s %-12s %-12s %s\n", t->id, tree_date, emit_date, json_date, dump_date, status);
         count++;

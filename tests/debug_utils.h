@@ -4,7 +4,7 @@
 #include "cyaml.h"
 #include "cyaml_utf8.h"
 #include <ctype.h>
-#include <dirent.h>
+#include "compat/dirent.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
