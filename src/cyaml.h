@@ -284,7 +284,7 @@ typedef struct {
     uint8_t width; //!< Line width, 0 = no wrap (default: 80)
     bool doc_start; //!< Emit --- (default: false)
     bool doc_end; //!< Emit ... (default: false)
-    bool comments; //!< Emit comments if available (default: false)
+    bool preserve_comments; //!< Emit comments if available (default: false)
     bool preserve_style; //!< Preserve original node styles (default: false = convert flow to block)
     cyaml_style_t style; //!< Default scalar style
     cyaml_coll_t coll; //!< Default collection style

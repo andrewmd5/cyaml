@@ -47,10 +47,23 @@ class Enum:
     doc: str = ""
 
 @dataclass
+class StructField:
+    name: str
+    type: str
+    doc: str = ""
+
+@dataclass
+class Struct:
+    name: str
+    fields: list[StructField] = field(default_factory=list)
+    doc: str = ""
+
+@dataclass
 class Region:
     name: str
     functions: list[Function] = field(default_factory=list)
     enums: list[Enum] = field(default_factory=list)
+    structs: list[Struct] = field(default_factory=list)
 
 def esc(s: str) -> str:
     return html.escape(s) if s else ""
@@ -166,6 +179,48 @@ def parse_enum(lines: list[str], start_idx: int) -> tuple[Enum | None, int]:
 
     return None, i
 
+def parse_struct(lines: list[str], start_idx: int) -> tuple[Struct | None, int]:
+    i = start_idx
+    started = False
+    struct_lines = []
+
+    while i < len(lines):
+        line = lines[i]
+
+        if "{" in line and not started:
+            started = True
+            i += 1
+            continue
+
+        name_match = re.match(r"\s*}\s*(\w+)\s*;", line)
+        if name_match and started:
+            fields = []
+            for sline in struct_lines:
+                sline = sline.strip()
+                if not sline or sline.startswith("//"):
+                    continue
+
+                doc = ""
+                for marker in ["//!<", "//!"]:
+                    if marker in sline:
+                        parts = sline.split(marker, 1)
+                        sline, doc = parts[0], parts[1].strip()
+                        break
+
+                # Parse field: type name; or type* name; or type *name;
+                field_match = re.match(r"(.+?)\s+(\w+)\s*;\s*$", sline.strip())
+                if field_match:
+                    fields.append(StructField(field_match.group(2), field_match.group(1).strip(), doc))
+
+            summary, _, _, _ = parse_doc_comment(lines, start_idx)
+            return Struct(name=name_match.group(1), fields=fields, doc=summary), i
+
+        if started:
+            struct_lines.append(line)
+        i += 1
+
+    return None, i
+
 def parse_header(content: str) -> list[Region]:
     lines = content.split("\n")
     regions = []
@@ -176,7 +231,7 @@ def parse_header(content: str) -> list[Region]:
         line = lines[i]
 
         if "// #region" in line:
-            if current_region.functions or current_region.enums:
+            if current_region.functions or current_region.enums or current_region.structs:
                 regions.append(current_region)
             current_region = Region(name=line.split("// #region")[1].strip())
             i += 1
@@ -207,9 +262,16 @@ def parse_header(content: str) -> list[Region]:
             i = end_i + 1
             continue
 
+        if line.strip().startswith("typedef struct") and "{" in line:
+            struct, end_i = parse_struct(lines, i)
+            if struct:
+                current_region.structs.append(struct)
+            i = end_i + 1
+            continue
+
         i += 1
 
-    if current_region.functions or current_region.enums:
+    if current_region.functions or current_region.enums or current_region.structs:
         regions.append(current_region)
 
     return regions
@@ -266,6 +328,18 @@ def render_enum_html(en: Enum) -> str:
     <table class="enum-table">{"".join(rows)}</table>
   </div>'''
 
+def render_struct_html(st: Struct) -> str:
+    rows = []
+    for f in st.fields:
+        doc = f'<span class="doc">{esc(f.doc)}</span>' if f.doc else ""
+        rows.append(f'<tr><td><code>{format_type(f.type)} {esc(f.name)}</code></td><td>{doc}</td></tr>')
+    doc_p = f"<p>{esc(st.doc)}</p>" if st.doc else ""
+    return f'''<div class="struct" id="{st.name}">
+    <h3><code>{esc(st.name)}</code></h3>
+    {doc_p}
+    <table class="struct-table">{"".join(rows)}</table>
+  </div>'''
+
 def render_function_html(fn: Function) -> str:
     sig = render_signature(fn)
     summary = f'<p class="summary">{esc(fn.summary)}</p>' if fn.summary else ""
@@ -299,9 +373,10 @@ def render_api_content(regions: list[Region]) -> str:
         if region.name == "Platform":
             continue
         anchor = re.sub(r'[^a-z0-9]+', '-', region.name.lower())
+        structs = "".join(render_struct_html(s) for s in region.structs)
         enums = "".join(render_enum_html(e) for e in region.enums)
         funcs = "".join(render_function_html(f) for f in region.functions)
-        sections.append(f'<section id="{anchor}"><h2>{esc(region.name)}</h2>{enums}{funcs}</section>')
+        sections.append(f'<section id="{anchor}"><h2>{esc(region.name)}</h2>{structs}{enums}{funcs}</section>')
     return "".join(sections)
 
 def render_sidebar(regions: list[Region]) -> str:
@@ -310,6 +385,8 @@ def render_sidebar(regions: list[Region]) -> str:
         if region.name == "Platform":
             continue
         items = []
+        for s in region.structs:
+            items.append(f'<a class="sidebar-item" href="#{s.name}">{esc(s.name)}</a>')
         for e in region.enums:
             items.append(f'<a class="sidebar-item" href="#{e.name}">{esc(e.name)}</a>')
         for f in region.functions:
@@ -463,6 +540,23 @@ def generate_root_index(versions: list[str]) -> str:
 </html>
 '''
 
+def generate_redirect(target: str, title: str) -> str:
+    return f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{esc(title)} - cyaml</title>
+  <link rel="canonical" href="{SITE_URL}/{target}">
+  <meta http-equiv="refresh" content="0; url=../{target}">
+  <script>window.location.href = "../{target}";</script>
+</head>
+<body>
+  <p>Redirecting to <a href="../{target}">{esc(title)}</a>...</p>
+</body>
+</html>
+'''
+
 def main():
     import sys
 
@@ -559,6 +653,18 @@ def main():
     # Generate root index.html (redirect to latest)
     (docs_dir / "index.html").write_text(generate_root_index(versions))
     print("Generated docs/index.html")
+
+    # Generate redirect pages for /api/ and /ypath/
+    latest = versions[0] if versions else "dev"
+    api_redirect_dir = docs_dir / "api"
+    api_redirect_dir.mkdir(exist_ok=True)
+    (api_redirect_dir / "index.html").write_text(generate_redirect(f"{latest}/api/", "API Reference"))
+    print("Generated docs/api/index.html")
+
+    ypath_redirect_dir = docs_dir / "ypath"
+    ypath_redirect_dir.mkdir(exist_ok=True)
+    (ypath_redirect_dir / "index.html").write_text(generate_redirect(f"{latest}/ypath/", "YPATH Specification"))
+    print("Generated docs/ypath/index.html")
 
     # Generate sitemap.xml with all versions
     sitemap_urls = []

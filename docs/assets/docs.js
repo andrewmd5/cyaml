@@ -54,10 +54,13 @@ function initSearch() {
       if (!res.ok) return;
       const data = await res.json();
       for (const region of data.regions) {
-        for (const en of region.enums) {
+        for (const st of region.structs || []) {
+          searchData.push({ id: st.name, name: st.name, summary: st.doc || '', section: region.name, type: 'struct' });
+        }
+        for (const en of region.enums || []) {
           searchData.push({ id: en.name, name: en.name, summary: en.doc || '', section: region.name, type: 'enum' });
         }
-        for (const fn of region.functions) {
+        for (const fn of region.functions || []) {
           searchData.push({ id: fn.name, name: fn.name, summary: fn.summary || '', section: region.name, type: 'function' });
         }
       }
@@ -107,7 +110,7 @@ function initSearch() {
     }
 
     results.innerHTML = matches.map((item, i) => `
-      <a href="api.html#${item.id}" class="search-result${i === 0 ? ' selected' : ''}">
+      <a href="#${item.id}" class="search-result${i === 0 ? ' selected' : ''}">
         <div class="search-result-title">${esc(item.name)}</div>
         <div class="search-result-section">${esc(item.section)} · ${item.type}</div>
       </a>

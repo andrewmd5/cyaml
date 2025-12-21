@@ -359,22 +359,22 @@ pre code {
 .copy-btn svg { width: 16px; height: 16px; color: var(--fg-muted); }
 .copy-btn.copied svg { color: var(--param); }
 
-.enum { margin-bottom: 2rem; }
+.enum, .struct { margin-bottom: 2rem; }
 
-.enum-table {
+.enum-table, .struct-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
 }
 
-.enum-table td {
+.enum-table td, .struct-table td {
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
   text-align: left;
 }
 
-.enum-table td:first-child {
+.enum-table td:first-child, .struct-table td:first-child {
   white-space: nowrap;
   width: 1%;
 }

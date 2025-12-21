@@ -178,7 +178,7 @@ static bool emit_indent(emitter_t* e, int depth)
 
 static inline bool emit_comments_before_line(emitter_t* e, uint32_t line, int depth)
 {
-    if (!e->opts.comments || !e->doc || !e->doc->comments)
+    if (!e->opts.preserve_comments || !e->doc || !e->doc->comments)
         return true;
     const char* src = cyaml_src(e->doc);
     if (!src)
@@ -199,7 +199,7 @@ static inline bool emit_comments_before_line(emitter_t* e, uint32_t line, int de
 
 static inline bool emit_inline_comment(emitter_t* e, uint32_t line)
 {
-    if (!e->opts.comments || !e->doc || !e->doc->comments)
+    if (!e->opts.preserve_comments || !e->doc || !e->doc->comments)
         return true;
     const char* src = cyaml_src(e->doc);
     if (!src)
@@ -222,7 +222,7 @@ static inline bool emit_inline_comment(emitter_t* e, uint32_t line)
 
 static inline bool emit_remaining_comments(emitter_t* e, int depth)
 {
-    if (!e->opts.comments || !e->doc || !e->doc->comments)
+    if (!e->opts.preserve_comments || !e->doc || !e->doc->comments)
         return true;
     const char* src = cyaml_src(e->doc);
     if (!src)
@@ -744,7 +744,7 @@ static bool emit_block_seq(emitter_t* e, const cyaml_node_t* n, int depth)
 {
     for (uint32_t i = 0; i < n->seq.count; i++) {
         cyaml_node_t* item = n->seq.items[i];
-        if (item && e->opts.comments)
+        if (item && e->opts.preserve_comments)
             if (!emit_comments_before_line(e, item->span.start_line, depth))
                 return false;
         bool already_newline = (EMIT_LAST(e) == C_LF);
@@ -753,7 +753,7 @@ static bool emit_block_seq(emitter_t* e, const cyaml_node_t* n, int depth)
         INDENT(e, depth);
         EMIT_S(e, "- ");
         NODE(e, item, depth + 1);
-        if (item && e->opts.comments && item->type == CYAML_SCALAR)
+        if (item && e->opts.preserve_comments && item->type == CYAML_SCALAR)
             if (!emit_inline_comment(e, item->span.end_line))
                 return false;
     }
@@ -779,7 +779,7 @@ static bool emit_block_map(emitter_t* e, const cyaml_node_t* n, int depth)
     for (uint32_t i = 0; i < n->map.count; i++) {
         const cyaml_node_t* key = n->map.pairs[i].key;
         const cyaml_node_t* val = n->map.pairs[i].val;
-        if (key && e->opts.comments)
+        if (key && e->opts.preserve_comments)
             if (!emit_comments_before_line(e, key->span.start_line, depth))
                 return false;
         bool just_after_dash = (EMIT_PREV(e) == '-' && EMIT_LAST(e) == C_SP);
@@ -854,7 +854,7 @@ static bool emit_block_map(emitter_t* e, const cyaml_node_t* n, int depth)
         } else {
             EMIT_S(e, ": ");
             NODE(e, val, depth + 1);
-            if (e->opts.comments && val && val->type == CYAML_SCALAR)
+            if (e->opts.preserve_comments && val && val->type == CYAML_SCALAR)
                 if (!emit_inline_comment(e, val->span.end_line))
                     return false;
         }
@@ -2154,13 +2154,13 @@ CYAML_API char* cyaml_emit(const cyaml_doc_t* doc, const cyaml_emit_opts_t* opts
         .buf = NULL, .len = 0, .cap = 0, .opts = opts ? *opts : CYAML_EMIT_DEFAULT, .doc = doc, .flags = 0, .comment_idx = 0, .last_line = 0
     };
 
-    if (e.opts.comments && doc->root)
+    if (e.opts.preserve_comments && doc->root)
         emit_comments_before_line(&e, doc->root->span.start_line, 0);
     if (e.opts.doc_start)
         emit_cstr(&e, "---\n");
     if (doc->root)
         emit_node(&e, doc->root, 0);
-    if (e.opts.comments)
+    if (e.opts.preserve_comments)
         emit_remaining_comments(&e, 0);
     emit_char(&e, C_LF);
     if (e.opts.doc_end)
