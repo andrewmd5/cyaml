@@ -18,8 +18,10 @@
 #include <string.h>
 #ifdef _WIN32
 #define strcasecmp _stricmp
+#define PATH_SEP "\\"
 #else
 #include <strings.h>
+#define PATH_SEP "/"
 #endif
 
 // #region File I/O
@@ -766,54 +768,54 @@ static inline bool dbg_load_test(dbg_test_files_t* t, const char* suite_dir,
     const char* test_id, int case_idx)
 {
     memset(t, 0, sizeof(*t));
-    snprintf(t->test_dir, sizeof(t->test_dir), "%s/%s", suite_dir, test_id);
+    snprintf(t->test_dir, sizeof(t->test_dir), "%s" PATH_SEP "%s", suite_dir, test_id);
 
     char subdir[512];
-    snprintf(subdir, sizeof(subdir), "%s/00", t->test_dir);
+    snprintf(subdir, sizeof(subdir), "%s" PATH_SEP "00", t->test_dir);
     char path[512];
 
     if (dbg_is_directory(subdir)) {
         char case_dir[16];
         snprintf(case_dir, sizeof(case_dir), "%02d", case_idx);
-        snprintf(subdir, sizeof(subdir), "%s/%s", t->test_dir, case_dir);
+        snprintf(subdir, sizeof(subdir), "%s" PATH_SEP "%s", t->test_dir, case_dir);
         snprintf(t->full_id, sizeof(t->full_id), "%s:%d", test_id, case_idx + 1);
 
-        snprintf(path, sizeof(path), "%s/===", subdir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "===", subdir);
         t->name = dbg_read_file(path, NULL);
 
-        snprintf(path, sizeof(path), "%s/in.yaml", subdir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "in.yaml", subdir);
         t->yaml = dbg_read_file(path, &t->yaml_len);
 
-        snprintf(path, sizeof(path), "%s/out.yaml", subdir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "out.yaml", subdir);
         t->out_yaml = dbg_read_file(path, NULL);
 
-        snprintf(path, sizeof(path), "%s/emit.yaml", subdir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "emit.yaml", subdir);
         t->emit_yaml = dbg_read_file(path, NULL);
 
-        snprintf(path, sizeof(path), "%s/in.json", subdir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "in.json", subdir);
         t->in_json = dbg_read_file(path, NULL);
 
-        snprintf(path, sizeof(path), "%s/test.event", subdir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "test.event", subdir);
         t->test_event = dbg_read_file(path, NULL);
     } else {
         cyaml_strlcpy(t->full_id, test_id, sizeof(t->full_id));
 
-        snprintf(path, sizeof(path), "%s/===", t->test_dir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "===", t->test_dir);
         t->name = dbg_read_file(path, NULL);
 
-        snprintf(path, sizeof(path), "%s/in.yaml", t->test_dir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "in.yaml", t->test_dir);
         t->yaml = dbg_read_file(path, &t->yaml_len);
 
-        snprintf(path, sizeof(path), "%s/out.yaml", t->test_dir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "out.yaml", t->test_dir);
         t->out_yaml = dbg_read_file(path, NULL);
 
-        snprintf(path, sizeof(path), "%s/emit.yaml", t->test_dir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "emit.yaml", t->test_dir);
         t->emit_yaml = dbg_read_file(path, NULL);
 
-        snprintf(path, sizeof(path), "%s/in.json", t->test_dir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "in.json", t->test_dir);
         t->in_json = dbg_read_file(path, NULL);
 
-        snprintf(path, sizeof(path), "%s/test.event", t->test_dir);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "test.event", t->test_dir);
         t->test_event = dbg_read_file(path, NULL);
     }
 

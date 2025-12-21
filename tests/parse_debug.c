@@ -20,7 +20,7 @@ static void run_debug(dbg_test_files_t* t)
     dbg_add_raw_info(out, root, "input", t->yaml, t->yaml_len);
 
     char error_path[512];
-    snprintf(error_path, sizeof(error_path), "%s/error", t->test_dir);
+    snprintf(error_path, sizeof(error_path), "%s" PATH_SEP "error", t->test_dir);
     FILE* ef = fopen(error_path, "r");
     bool expect_error = (ef != NULL);
     if (ef)

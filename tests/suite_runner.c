@@ -17,8 +17,10 @@
 
 #ifdef _WIN32
 #define strcasecmp _stricmp
+#define PATH_SEP "\\"
 #else
 #include <strings.h>
+#define PATH_SEP "/"
 #endif
 
 #define RESULTS_FILE ".cyaml_suite_results"
@@ -468,7 +470,7 @@ static void run_data_test(const char* test_dir, const char* test_id, int case_nu
 
     char* tags = NULL;
     if (src_dir) {
-        snprintf(path, sizeof(path), "%s/%s.yaml", src_dir, test_id);
+        snprintf(path, sizeof(path), "%s" PATH_SEP "%s.yaml", src_dir, test_id);
         char* src_content = read_file(path, NULL);
         if (src_content) {
             cyaml_error_t src_err;
@@ -501,14 +503,14 @@ static void run_data_test(const char* test_dir, const char* test_id, int case_nu
     // In 1.2 mode: 1.3-err tests should parse successfully
     bool is_1_3_err = tags && has_tag(tags, "1.3-err");
 
-    snprintf(path, sizeof(path), "%s/===", test_dir);
+    snprintf(path, sizeof(path), "%s" PATH_SEP "===", test_dir);
     size_t name_len;
     char* name = read_file(path, &name_len);
     // Strip trailing CRLF or LF
     while (name && name_len > 0 && (name[name_len - 1] == '\n' || name[name_len - 1] == '\r'))
         name[--name_len] = '\0';
 
-    snprintf(path, sizeof(path), "%s/in.yaml", test_dir);
+    snprintf(path, sizeof(path), "%s" PATH_SEP "in.yaml", test_dir);
     size_t yaml_len;
     char* yaml = read_file(path, &yaml_len);
     if (!yaml) {
@@ -518,7 +520,7 @@ static void run_data_test(const char* test_dir, const char* test_id, int case_nu
         return;
     }
 
-    snprintf(path, sizeof(path), "%s/error", test_dir);
+    snprintf(path, sizeof(path), "%s" PATH_SEP "error", test_dir);
     bool expect_fail = file_exists(path);
 
     // In 1.3 mode, 1.3-err tests should fail to parse
@@ -526,16 +528,16 @@ static void run_data_test(const char* test_dir, const char* test_id, int case_nu
         expect_fail = true;
     }
 
-    snprintf(path, sizeof(path), "%s/test.event", test_dir);
+    snprintf(path, sizeof(path), "%s" PATH_SEP "test.event", test_dir);
     char* tree = read_file(path, NULL);
 
-    snprintf(path, sizeof(path), "%s/out.yaml", test_dir);
+    snprintf(path, sizeof(path), "%s" PATH_SEP "out.yaml", test_dir);
     char* dump = read_file(path, NULL);
 
-    snprintf(path, sizeof(path), "%s/emit.yaml", test_dir);
+    snprintf(path, sizeof(path), "%s" PATH_SEP "emit.yaml", test_dir);
     char* emit = read_file(path, NULL);
 
-    snprintf(path, sizeof(path), "%s/in.json", test_dir);
+    snprintf(path, sizeof(path), "%s" PATH_SEP "in.json", test_dir);
     char* json = read_file(path, NULL);
 
     s->total++;
@@ -777,13 +779,13 @@ static void run_data_dir(const char* data_dir, const char* src_dir, const char* 
             continue;
 
         char test_path[512];
-        snprintf(test_path, sizeof(test_path), "%s/%s", data_dir, ent->d_name);
+        snprintf(test_path, sizeof(test_path), "%s" PATH_SEP "%s", data_dir, ent->d_name);
 
         if (!is_directory(test_path))
             continue;
 
         char subpath[512];
-        snprintf(subpath, sizeof(subpath), "%s/00", test_path);
+        snprintf(subpath, sizeof(subpath), "%s" PATH_SEP "00", test_path);
 
         if (is_directory(subpath)) {
             DIR* sd = opendir(test_path);
@@ -802,7 +804,7 @@ static void run_data_dir(const char* data_dir, const char* src_dir, const char* 
                     continue;
 
                 int case_num = atoi(sent->d_name) + 1;
-                snprintf(subpath, sizeof(subpath), "%s/%s", test_path, sent->d_name);
+                snprintf(subpath, sizeof(subpath), "%s" PATH_SEP "%s", test_path, sent->d_name);
 
                 printf("Running: %s/%s\n", ent->d_name, sent->d_name);
                 run_data_test(subpath, ent->d_name, case_num, total_cases, src_dir, s, spec);
@@ -863,9 +865,11 @@ int main(int argc, char** argv)
     char src_dir[512];
     cyaml_strlcpy(src_dir, dir, sizeof(src_dir));
     char* data_suffix = strstr(src_dir, "/data");
-    if (data_suffix && (data_suffix[5] == '\0' || data_suffix[5] == '/')) {
+    if (!data_suffix)
+        data_suffix = strstr(src_dir, "\\data");
+    if (data_suffix && (data_suffix[5] == '\0' || data_suffix[5] == '/' || data_suffix[5] == '\\')) {
         size_t remaining = sizeof(src_dir) - (size_t)(data_suffix - src_dir);
-        cyaml_strlcpy(data_suffix, "/src", remaining);
+        cyaml_strlcpy(data_suffix, PATH_SEP "src", remaining);
     }
     run_data_dir(dir, src_dir, filter, &s, spec);
 
