@@ -14,8 +14,9 @@ jobs:
         include:
           - os: macos-latest
             name: macos-arm64
-          - os: macos-15-large
+          - os: macos-latest
             name: macos-x64
+            cmake_arch: x86_64
           - os: ubuntu-latest
             name: linux-x64
           - os: ubuntu-24.04-arm
@@ -62,7 +63,11 @@ jobs:
       - name: Build (Unix)
         if: "!startsWith(matrix.os, 'windows')"
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
+          if [ -n "${{ matrix.cmake_arch }}" ]; then
+            CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }}"
+          fi
+          cmake -B build $CMAKE_ARGS
           cmake --build build -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
 
       - name: Build (Windows)
