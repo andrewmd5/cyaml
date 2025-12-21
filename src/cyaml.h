@@ -266,7 +266,7 @@ typedef struct {
 
 typedef struct {
     bool dup_keys; //!< Allow duplicate keys (default: false)
-    bool comments; //!< Preserve comments (default: false)
+    bool preserve_comments; //!< Preserve comments (default: false)
     uint32_t max_depth; //!< Max nesting depth (0 = unlimited)
     uint32_t max_size; //!< Max source size (0 = unlimited)
     cyaml_spec_t spec; //!< YAML spec version (default: auto-detect)

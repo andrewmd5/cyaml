@@ -2664,7 +2664,7 @@ static cyaml_doc_t* parse_document_internal(scanner_t* scanner, parser_t* parser
     doc->src.borrow.ptr = scanner->src;
     doc->src.borrow.len = (uint32_t)scanner->len;
 
-    if (opts && opts->comments) {
+    if (opts && opts->preserve_comments) {
         doc->comments = calloc(1, sizeof(*doc->comments));
     }
 
