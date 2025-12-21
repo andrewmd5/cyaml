@@ -212,6 +212,20 @@ bool cyaml_str_to_u64(const char* s, const char** end, uint64_t* out);
 //! @return true if valid float parsed
 bool cyaml_str_to_f64(const char* s, const char** end, double* out);
 
+//! Scan bounded string for integer pattern
+//! Accepts: decimal, 0x hex, 0o octal, optional +/- sign
+//! @param p    Start of string
+//! @param len  Length of string
+//! @return true if entire string is valid integer
+bool cyaml_scan_int(const char* p, size_t len);
+
+//! Scan bounded string for float pattern
+//! Accepts: decimal with optional fraction/exponent, but NOT .inf/.nan
+//! @param p    Start of string
+//! @param len  Length of string
+//! @return true if entire string is valid float (has . or exponent)
+bool cyaml_scan_float(const char* p, size_t len);
+
 // #endregion
 
 #ifdef __cplusplus

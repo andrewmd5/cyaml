@@ -390,6 +390,53 @@ CYAML_API bool cyaml_as_float(const cyaml_doc_t* doc, const cyaml_node_t* n, dou
     return ok;
 }
 
+CYAML_API cyaml_scalar_kind_t cyaml_scalar_kind(const cyaml_doc_t* doc, const cyaml_node_t* n)
+{
+    if (!n || n->type == CYAML_NULL || n->type == CYAML_NONE)
+        return CYAML_KIND_NULL;
+    if (n->type != CYAML_SCALAR)
+        return CYAML_KIND_STRING;
+
+    if (n->style == CYAML_SINGLE || n->style == CYAML_DOUBLE)
+        return CYAML_KIND_STRING;
+
+    cyaml_span_t s = n->span;
+    if (s.len == 0)
+        return CYAML_KIND_NULL;
+
+    const char* src = cyaml_src(doc);
+    if (!src)
+        return CYAML_KIND_STRING;
+
+    const char* p = src + s.off;
+
+    if (s.len == L_TILDE && p[0] == C_TILDE)
+        return CYAML_KIND_NULL;
+    if (s.len == L_NULL && cyaml_memicmp(p, S_NULL, L_NULL) == 0)
+        return CYAML_KIND_NULL;
+
+    if (s.len == L_TRUE && cyaml_memicmp(p, S_TRUE, L_TRUE) == 0)
+        return CYAML_KIND_BOOL;
+    if (s.len == L_FALSE && cyaml_memicmp(p, S_FALSE, L_FALSE) == 0)
+        return CYAML_KIND_BOOL;
+
+    if (s.len == L_NAN && cyaml_memicmp(p, S_NAN, L_NAN) == 0)
+        return CYAML_KIND_FLOAT;
+    if (s.len == L_INF && cyaml_memicmp(p, S_INF, L_INF) == 0)
+        return CYAML_KIND_FLOAT;
+    if (s.len == L_PINF && cyaml_memicmp(p, S_PINF, L_PINF) == 0)
+        return CYAML_KIND_FLOAT;
+    if (s.len == L_NINF && cyaml_memicmp(p, S_NINF, L_NINF) == 0)
+        return CYAML_KIND_FLOAT;
+
+    if (cyaml_scan_int(p, s.len))
+        return CYAML_KIND_INT;
+    if (cyaml_scan_float(p, s.len))
+        return CYAML_KIND_FLOAT;
+
+    return CYAML_KIND_STRING;
+}
+
 // #endregion
 
 // #region Mapping/Sequence Access

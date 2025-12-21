@@ -74,6 +74,15 @@ typedef enum {
     CYAML_SCALAR_EXPLICIT_EMPTY = 1 << 0 //!< Empty value that should NOT become null
 } cyaml_scalar_flags_t;
 
+//! Inferred scalar value kind (YAML Core Schema)
+typedef enum {
+    CYAML_KIND_NULL, //!< null, ~, Null, NULL, or empty
+    CYAML_KIND_BOOL, //!< true, false (case-insensitive)
+    CYAML_KIND_INT, //!< Integer (decimal, 0x hex, 0o octal)
+    CYAML_KIND_FLOAT, //!< Float (includes .inf, .nan)
+    CYAML_KIND_STRING //!< Unrecognized (treat as string)
+} cyaml_scalar_kind_t;
+
 // #endregion
 
 // #region Span (Atom)
@@ -495,6 +504,14 @@ CYAML_API bool cyaml_as_bool(const cyaml_doc_t* doc, const cyaml_node_t* n, bool
 //! @param n    Node to check
 //! @return true if null
 CYAML_API bool cyaml_is_null_val(const cyaml_doc_t* doc, const cyaml_node_t* n);
+
+//! Infer scalar value kind using YAML Core Schema rules
+//! For plain scalars, determines if value is null, bool, int, float, or string.
+//! Quoted scalars are always treated as strings.
+//! @param doc  Document containing the node
+//! @param n    Scalar node to analyze
+//! @return Inferred kind (CYAML_KIND_STRING if not scalar or quoted)
+CYAML_API cyaml_scalar_kind_t cyaml_scalar_kind(const cyaml_doc_t* doc, const cyaml_node_t* n);
 
 // #endregion
 

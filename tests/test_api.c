@@ -590,6 +590,79 @@ void test_cyaml_is_null_val_NULL(void)
     cyaml_free(doc);
 }
 
+void test_cyaml_scalar_kind_null(void)
+{
+    const char* nulls[] = { "~", "null", "Null", "NULL" };
+    for (size_t i = 0; i < sizeof(nulls) / sizeof(nulls[0]); i++) {
+        cyaml_doc_t* doc = cyaml_parse(nulls[i], strlen(nulls[i]), NULL, NULL);
+        TEST_ASSERT_NOT_NULL(doc);
+        TEST_ASSERT_EQUAL_INT(CYAML_KIND_NULL, cyaml_scalar_kind(doc, cyaml_root(doc)));
+        cyaml_free(doc);
+    }
+    
+    TEST_ASSERT_EQUAL_INT(CYAML_KIND_NULL, cyaml_scalar_kind(NULL, NULL));
+}
+
+void test_cyaml_scalar_kind_bool(void)
+{
+    const char* bools[] = { "true", "false", "True", "False", "TRUE", "FALSE" };
+    for (size_t i = 0; i < sizeof(bools) / sizeof(bools[0]); i++) {
+        cyaml_doc_t* doc = cyaml_parse(bools[i], strlen(bools[i]), NULL, NULL);
+        TEST_ASSERT_NOT_NULL(doc);
+        TEST_ASSERT_EQUAL_INT(CYAML_KIND_BOOL, cyaml_scalar_kind(doc, cyaml_root(doc)));
+        cyaml_free(doc);
+    }
+}
+
+void test_cyaml_scalar_kind_int(void)
+{
+    const char* ints[] = { "0", "42", "-123", "+456", "0xff", "0xFF", "0o77", "0O10" };
+    for (size_t i = 0; i < sizeof(ints) / sizeof(ints[0]); i++) {
+        cyaml_doc_t* doc = cyaml_parse(ints[i], strlen(ints[i]), NULL, NULL);
+        TEST_ASSERT_NOT_NULL(doc);
+        TEST_ASSERT_EQUAL_INT(CYAML_KIND_INT, cyaml_scalar_kind(doc, cyaml_root(doc)));
+        cyaml_free(doc);
+    }
+}
+
+void test_cyaml_scalar_kind_float(void)
+{
+    const char* floats[] = { "3.14", "-2.5", "+1.0", "1e10", "1.5e-3", ".inf", "-.inf", "+.inf", ".nan" };
+    for (size_t i = 0; i < sizeof(floats) / sizeof(floats[0]); i++) {
+        cyaml_doc_t* doc = cyaml_parse(floats[i], strlen(floats[i]), NULL, NULL);
+        TEST_ASSERT_NOT_NULL(doc);
+        TEST_ASSERT_EQUAL_INT(CYAML_KIND_FLOAT, cyaml_scalar_kind(doc, cyaml_root(doc)));
+        cyaml_free(doc);
+    }
+}
+
+void test_cyaml_scalar_kind_string(void)
+{
+    const char* strings[] = { "hello", "foo bar", "yes", "no", "on", "off" };
+    for (size_t i = 0; i < sizeof(strings) / sizeof(strings[0]); i++) {
+        cyaml_doc_t* doc = cyaml_parse(strings[i], strlen(strings[i]), NULL, NULL);
+        TEST_ASSERT_NOT_NULL(doc);
+        TEST_ASSERT_EQUAL_INT(CYAML_KIND_STRING, cyaml_scalar_kind(doc, cyaml_root(doc)));
+        cyaml_free(doc);
+    }
+}
+
+void test_cyaml_scalar_kind_quoted_string(void)
+{
+    
+    const char* yaml = "'123'";
+    cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, NULL);
+    TEST_ASSERT_NOT_NULL(doc);
+    TEST_ASSERT_EQUAL_INT(CYAML_KIND_STRING, cyaml_scalar_kind(doc, cyaml_root(doc)));
+    cyaml_free(doc);
+
+    yaml = "\"true\"";
+    doc = cyaml_parse(yaml, strlen(yaml), NULL, NULL);
+    TEST_ASSERT_NOT_NULL(doc);
+    TEST_ASSERT_EQUAL_INT(CYAML_KIND_STRING, cyaml_scalar_kind(doc, cyaml_root(doc)));
+    cyaml_free(doc);
+}
+
 void test_cyaml_seq_len(void)
 {
     const char* yaml = "- a\n- b\n- c";
@@ -1232,7 +1305,7 @@ void test_iteration_macros(void)
 
     cyaml_free(doc);
 
-    // Test CYAML_EACH_MAP
+    
     const char* yaml_map = "x: 1\ny: 2\nz: 3";
     doc = cyaml_parse(yaml_map, strlen(yaml_map), NULL, &err);
     TEST_ASSERT_NOT_NULL(doc);
@@ -2225,6 +2298,12 @@ int main(void)
     RUN_TEST(test_cyaml_is_null_val_tilde);
     RUN_TEST(test_cyaml_is_null_val_null);
     RUN_TEST(test_cyaml_is_null_val_NULL);
+    RUN_TEST(test_cyaml_scalar_kind_null);
+    RUN_TEST(test_cyaml_scalar_kind_bool);
+    RUN_TEST(test_cyaml_scalar_kind_int);
+    RUN_TEST(test_cyaml_scalar_kind_float);
+    RUN_TEST(test_cyaml_scalar_kind_string);
+    RUN_TEST(test_cyaml_scalar_kind_quoted_string);
     RUN_TEST(test_cyaml_seq_len);
     RUN_TEST(test_cyaml_seq_len_null);
     RUN_TEST(test_cyaml_seq_get);

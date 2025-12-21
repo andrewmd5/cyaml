@@ -1101,4 +1101,90 @@ bool cyaml_str_to_f64(const char* s, const char** end, double* out)
     return true;
 }
 
+bool cyaml_scan_int(const char* p, size_t len)
+{
+    if (!p || len == 0)
+        return false;
+
+    const char* end = p + len;
+
+    if (*p == '+' || *p == '-') {
+        p++;
+        if (p >= end)
+            return false;
+    }
+    if (p + 1 < end && p[0] == '0') {
+        if (p[1] == 'x' || p[1] == 'X') {
+            p += 2;
+            if (p >= end || !CYAML_IS_HEX(*p))
+                return false;
+            while (p < end && CYAML_IS_HEX(*p))
+                p++;
+            return p == end;
+        }
+        if (p[1] == 'o' || p[1] == 'O') {
+            p += 2;
+            if (p >= end || *p < '0' || *p > '7')
+                return false;
+            while (p < end && *p >= '0' && *p <= '7')
+                p++;
+            return p == end;
+        }
+    }
+
+    if (!CYAML_IS_DIGIT(*p))
+        return false;
+    while (p < end && CYAML_IS_DIGIT(*p))
+        p++;
+
+    return p == end;
+}
+
+bool cyaml_scan_float(const char* p, size_t len)
+{
+    if (!p || len == 0)
+        return false;
+
+    const char* end = p + len;
+
+    if (*p == '+' || *p == '-') {
+        p++;
+        if (p >= end)
+            return false;
+    }
+
+    bool has_digits = false;
+    bool has_dot = false;
+    bool has_exp = false;
+
+    while (p < end && CYAML_IS_DIGIT(*p)) {
+        has_digits = true;
+        p++;
+    }
+
+    if (p < end && *p == '.') {
+        has_dot = true;
+        p++;
+        while (p < end && CYAML_IS_DIGIT(*p)) {
+            has_digits = true;
+            p++;
+        }
+    }
+
+    if (!has_digits)
+        return false;
+
+    if (p < end && (*p == 'e' || *p == 'E')) {
+        has_exp = true;
+        p++;
+        if (p < end && (*p == '+' || *p == '-'))
+            p++;
+        if (p >= end || !CYAML_IS_DIGIT(*p))
+            return false;
+        while (p < end && CYAML_IS_DIGIT(*p))
+            p++;
+    }
+    return p == end && (has_dot || has_exp);
+}
+
 // #endregion
