@@ -1,4 +1,5 @@
 #include <dirent.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -250,14 +251,14 @@ static void suite_load(test_suite_t* s, const char* dir)
         if (ent->d_name[0] == '.')
             continue;
 
-        char path[1024];
+        char path[PATH_MAX];
         snprintf(path, sizeof(path), "%s/%s", dir, ent->d_name);
 
         DIR* sd = opendir(path);
         if (!sd)
             continue;
 
-        char subpath[1024];
+        char subpath[PATH_MAX];
         snprintf(subpath, sizeof(subpath), "%s/00", path);
         DIR* multi = opendir(subpath);
 
@@ -267,14 +268,14 @@ static void suite_load(test_suite_t* s, const char* dir)
             while ((sent = readdir(sd)) != NULL) {
                 if (sent->d_name[0] < '0' || sent->d_name[0] > '9')
                     continue;
-                char yaml_path[1024];
+                char yaml_path[PATH_MAX];
                 snprintf(yaml_path, sizeof(yaml_path), "%s/%s/in.yaml", path, sent->d_name);
                 char name[64];
                 snprintf(name, sizeof(name), "%s/%s", ent->d_name, sent->d_name);
                 suite_add(s, yaml_path, name);
             }
         } else {
-            char yaml_path[1024];
+            char yaml_path[PATH_MAX];
             snprintf(yaml_path, sizeof(yaml_path), "%s/in.yaml", path);
             suite_add(s, yaml_path, ent->d_name);
         }

@@ -19,8 +19,12 @@
 #ifdef _WIN32
 #define strcasecmp _stricmp
 #define PATH_SEP "\\"
+#ifndef PATH_MAX
+#define PATH_MAX 260
+#endif
 #else
 #include <strings.h>
+#include <limits.h>
 #define PATH_SEP "/"
 #endif
 
@@ -753,7 +757,7 @@ static inline bool dbg_nodes_equal(dbg_cmp_ctx_t* ctx,
 // #region Test File Loading
 
 typedef struct {
-    char test_dir[1024];
+    char test_dir[PATH_MAX];
     char full_id[80];
     char* name;
     char* yaml;
@@ -770,9 +774,9 @@ static inline bool dbg_load_test(dbg_test_files_t* t, const char* suite_dir,
     memset(t, 0, sizeof(*t));
     snprintf(t->test_dir, sizeof(t->test_dir), "%s" PATH_SEP "%s", suite_dir, test_id);
 
-    char subdir[1024];
+    char subdir[PATH_MAX];
     snprintf(subdir, sizeof(subdir), "%s" PATH_SEP "00", t->test_dir);
-    char path[1024];
+    char path[PATH_MAX];
 
     if (dbg_is_directory(subdir)) {
         char case_dir[16];

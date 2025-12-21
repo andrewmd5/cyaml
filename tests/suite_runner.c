@@ -18,8 +18,12 @@
 #ifdef _WIN32
 #define strcasecmp _stricmp
 #define PATH_SEP "\\"
+#ifndef PATH_MAX
+#define PATH_MAX 260
+#endif
 #else
 #include <strings.h>
+#include <limits.h>
 #define PATH_SEP "/"
 #endif
 
@@ -458,7 +462,7 @@ static void run_data_test(const char* test_dir, const char* test_id, int case_nu
     int total_cases, const char* src_dir, stats_t* s,
     cyaml_spec_t spec)
 {
-    char path[1024];
+    char path[PATH_MAX];
 
     char full_id[80];
     if (total_cases > 1) {
@@ -778,13 +782,13 @@ static void run_data_dir(const char* data_dir, const char* src_dir, const char* 
         if (filter && !strstr(ent->d_name, filter))
             continue;
 
-        char test_path[1024];
+        char test_path[PATH_MAX];
         snprintf(test_path, sizeof(test_path), "%s" PATH_SEP "%s", data_dir, ent->d_name);
 
         if (!is_directory(test_path))
             continue;
 
-        char subpath[1024];
+        char subpath[PATH_MAX];
         snprintf(subpath, sizeof(subpath), "%s" PATH_SEP "00", test_path);
 
         if (is_directory(subpath)) {
@@ -862,7 +866,7 @@ int main(int argc, char** argv)
 
     stats_t s = { 0 };
 
-    char src_dir[1024];
+    char src_dir[PATH_MAX];
     cyaml_strlcpy(src_dir, dir, sizeof(src_dir));
     char* data_suffix = strstr(src_dir, "/data");
     if (!data_suffix)
