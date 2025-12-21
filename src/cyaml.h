@@ -674,12 +674,6 @@ CYAML_API char* cyaml_emit(const cyaml_doc_t* doc, const cyaml_emit_opts_t* opts
 CYAML_API char* cyaml_emit_node(const cyaml_doc_t* doc, const cyaml_node_t* node,
     const cyaml_emit_opts_t* opts, size_t* len);
 
-//! Emit document to file
-//! @param doc   Document to emit
-//! @param path  Output file path
-//! @return true on success
-CYAML_API bool cyaml_emit_file(const cyaml_doc_t* doc, const char* path);
-
 //! Emit stream to YAML preserving original formatting
 //! @param stream  Stream to emit
 //! @param len     Output length (NULL to ignore)

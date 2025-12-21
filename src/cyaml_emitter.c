@@ -2195,23 +2195,6 @@ CYAML_API char* cyaml_emit_node(const cyaml_doc_t* doc, const cyaml_node_t* node
     return e.buf;
 }
 
-CYAML_API bool cyaml_emit_file(const cyaml_doc_t* doc, const char* path)
-{
-    size_t len;
-    char* str = cyaml_emit(doc, NULL, &len);
-    if (!str)
-        return false;
-    FILE* f = fopen(path, "w");
-    if (!f) {
-        free(str);
-        return false;
-    }
-    size_t written = fwrite(str, 1, len, f);
-    fclose(f);
-    free(str);
-    return written == len;
-}
-
 CYAML_API char* cyaml_dump(const cyaml_doc_t* doc, size_t* len)
 {
     if (!doc)

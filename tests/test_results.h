@@ -554,9 +554,21 @@ bool tr_save(const char* path, tr_results_t* r)
     cyaml_map_set(doc, summary, "json_skip", cyaml_new_int(doc, r->json_skip));
     cyaml_map_set(doc, root, "summary", summary);
 
-    bool ok = cyaml_emit_file(doc, path);
+    size_t len;
+    char* yaml = cyaml_emit(doc, NULL, &len);
     cyaml_free(doc);
-    return ok;
+    if (!yaml)
+        return false;
+
+    FILE* f = fopen(path, "wb");
+    if (!f) {
+        free(yaml);
+        return false;
+    }
+    size_t written = fwrite(yaml, 1, len, f);
+    fclose(f);
+    free(yaml);
+    return written == len;
 }
 
 #endif // TEST_RESULTS_IMPL
