@@ -81,8 +81,8 @@ jobs:
 
       - name: Test (Windows)
         if: startsWith(matrix.os, 'windows')
+        working-directory: build
         run: |
-          cd build
           .\Release\cyaml_suite.exe ..\refs\yaml-test-suite\data
           .\Release\ypath_test.exe ..\refs\ypath\tests.yml
           .\Release\test_api.exe
