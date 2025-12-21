@@ -14,18 +14,24 @@ jobs:
         include:
           - os: macos-latest
             name: macos-arm64
+            artifact: cyaml-macos-arm64
           - os: macos-latest
             name: macos-x64
+            artifact: cyaml-macos-x64
             cmake_arch: x86_64
           - os: ubuntu-latest
             name: linux-x64
+            artifact: cyaml-linux-x64
           - os: ubuntu-24.04-arm
             name: linux-arm64
+            artifact: cyaml-linux-arm64
           - os: windows-latest
             name: windows-x64
+            artifact: cyaml-windows-x64
             arch: x64
           - os: windows-11-arm
             name: windows-arm64
+            artifact: cyaml-windows-arm64
             arch: ARM64
 
     runs-on: ${{ matrix.os }}
@@ -108,3 +114,34 @@ jobs:
         with:
           path: build/.cyaml_suite_results
           key: test-results-${{ github.sha }}
+
+      - name: Package (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          mkdir -p dist/lib dist/include
+          cp src/cyaml.h dist/include/
+          cp build/libcyaml.a dist/lib/
+          cp build/libcyaml.dylib dist/lib/ 2>/dev/null || true
+
+      - name: Package (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          mkdir -p dist/lib dist/include
+          cp src/cyaml.h dist/include/
+          cp build/libcyaml.a dist/lib/
+          cp build/libcyaml.so* dist/lib/ 2>/dev/null || true
+
+      - name: Package (Windows)
+        if: startsWith(matrix.os, 'windows')
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\lib
+          New-Item -ItemType Directory -Force -Path dist\include
+          Copy-Item src\cyaml.h dist\include\
+          Copy-Item build\Release\cyaml.lib dist\lib\ -ErrorAction SilentlyContinue
+          Copy-Item build\Release\cyaml.dll dist\lib\ -ErrorAction SilentlyContinue
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
