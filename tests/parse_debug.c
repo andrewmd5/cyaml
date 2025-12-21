@@ -75,7 +75,7 @@ static void run_debug(dbg_test_files_t* t)
 
         if (doc->root) {
             const char* type_names[] = { "none", "null", "scalar", "seq", "map", "alias" };
-            int type_idx = doc->root->type;
+            int type_idx = (int)doc->root->type;
             if (type_idx < 0 || type_idx > 5)
                 type_idx = 0;
             cyaml_map_set(out, doc_info, "root_type", cyaml_new_cstr(out, type_names[type_idx]));
