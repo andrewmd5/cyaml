@@ -285,11 +285,13 @@ typedef struct {
     bool doc_start; //!< Emit --- (default: false)
     bool doc_end; //!< Emit ... (default: false)
     bool comments; //!< Emit comments if available (default: false)
+    bool preserve_style; //!< Preserve original node styles (default: false = convert flow to block)
     cyaml_style_t style; //!< Default scalar style
     cyaml_coll_t coll; //!< Default collection style
 } cyaml_emit_opts_t;
 
-#define CYAML_EMIT_DEFAULT ((cyaml_emit_opts_t) { 2, 80, false, false, false, CYAML_PLAIN, CYAML_BLOCK })
+#define CYAML_EMIT_DEFAULT ((cyaml_emit_opts_t) { 2, 80, false, false, false, false, CYAML_PLAIN, CYAML_BLOCK })
+#define CYAML_DUMP_DEFAULT ((cyaml_emit_opts_t) { 2, 0, false, false, false, false, CYAML_PLAIN, CYAML_BLOCK })
 
 // #endregion
 

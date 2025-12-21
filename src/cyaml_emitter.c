@@ -682,7 +682,7 @@ static bool emit_node(emitter_t* e, const cyaml_node_t* n, int depth)
         return emit_scalar(e, n, depth);
 
     case CYAML_SEQ:
-        if (!EMIT_IS_DUMP(e) && n->style == (cyaml_style_t)CYAML_FLOW && n->seq.count > 0) {
+        if (!e->opts.preserve_style && !EMIT_IS_DUMP(e) && n->style == (cyaml_style_t)CYAML_FLOW && n->seq.count > 0) {
             EMIT_PROPS(e, n);
             return emit_block_seq(e, n, depth);
         }
@@ -694,7 +694,7 @@ static bool emit_node(emitter_t* e, const cyaml_node_t* n, int depth)
         return emit_block_seq(e, n, depth);
 
     case CYAML_MAP:
-        if (!EMIT_IS_DUMP(e) && n->style == (cyaml_style_t)CYAML_FLOW && n->map.count > 0) {
+        if (!e->opts.preserve_style && !EMIT_IS_DUMP(e) && n->style == (cyaml_style_t)CYAML_FLOW && n->map.count > 0) {
             EMIT_PROPS(e, n);
             return emit_block_map(e, n, depth);
         }
@@ -817,7 +817,7 @@ static bool emit_block_map(emitter_t* e, const cyaml_node_t* n, int depth)
         if (val && (val->type == CYAML_MAP || val->type == CYAML_SEQ)) {
             if (val->style != (cyaml_style_t)CYAML_FLOW) {
                 val_is_block = true;
-            } else if (!EMIT_IS_DUMP(e)) {
+            } else if (!e->opts.preserve_style && !EMIT_IS_DUMP(e)) {
                 uint32_t count = val->type == CYAML_MAP ? val->map.count : val->seq.count;
                 if (count > 0)
                     val_is_block = true;
@@ -2149,10 +2149,9 @@ CYAML_API char* cyaml_emit(const cyaml_doc_t* doc, const cyaml_emit_opts_t* opts
 {
     if (!doc)
         return NULL;
-    static const cyaml_emit_opts_t default_opts = { 2, 80, false, false, false, CYAML_PLAIN, CYAML_BLOCK };
 
     emitter_t e = {
-        .buf = NULL, .len = 0, .cap = 0, .opts = opts ? *opts : default_opts, .doc = doc, .flags = 0, .comment_idx = 0, .last_line = 0
+        .buf = NULL, .len = 0, .cap = 0, .opts = opts ? *opts : CYAML_EMIT_DEFAULT, .doc = doc, .flags = 0, .comment_idx = 0, .last_line = 0
     };
 
     if (e.opts.comments && doc->root)
@@ -2180,10 +2179,9 @@ CYAML_API char* cyaml_emit_node(const cyaml_doc_t* doc, const cyaml_node_t* node
 {
     if (!doc || !node)
         return NULL;
-    static const cyaml_emit_opts_t default_opts = { 2, 80, false, false, false, CYAML_PLAIN, CYAML_BLOCK };
 
     emitter_t e = {
-        .buf = NULL, .len = 0, .cap = 0, .opts = opts ? *opts : default_opts, .doc = doc, .flags = 0, .comment_idx = 0, .last_line = 0
+        .buf = NULL, .len = 0, .cap = 0, .opts = opts ? *opts : CYAML_EMIT_DEFAULT, .doc = doc, .flags = 0, .comment_idx = 0, .last_line = 0
     };
 
     emit_node(&e, node, 0);
@@ -2199,10 +2197,9 @@ CYAML_API char* cyaml_dump(const cyaml_doc_t* doc, size_t* len)
 {
     if (!doc)
         return NULL;
-    static const cyaml_emit_opts_t dump_opts = { 2, 0, false, false, false, CYAML_PLAIN, CYAML_BLOCK };
 
     emitter_t e = {
-        .buf = NULL, .len = 0, .cap = 0, .opts = dump_opts, .doc = doc, .flags = EMIT_DUMP, .comment_idx = 0, .last_line = 0
+        .buf = NULL, .len = 0, .cap = 0, .opts = CYAML_DUMP_DEFAULT, .doc = doc, .flags = EMIT_DUMP, .comment_idx = 0, .last_line = 0
     };
 
     TRY_OR(&e, dump_document(&e, doc, NULL, 0));
@@ -2218,10 +2215,9 @@ CYAML_API char* cyaml_stream_dump(const cyaml_stream_t* stream, size_t* len)
 {
     if (!stream)
         return NULL;
-    static const cyaml_emit_opts_t dump_opts = { 2, 0, false, false, false, CYAML_PLAIN, CYAML_BLOCK };
 
     emitter_t e = {
-        .buf = NULL, .len = 0, .cap = 0, .opts = dump_opts, .doc = NULL, .flags = EMIT_DUMP, .comment_idx = 0, .last_line = 0
+        .buf = NULL, .len = 0, .cap = 0, .opts = CYAML_DUMP_DEFAULT, .doc = NULL, .flags = EMIT_DUMP, .comment_idx = 0, .last_line = 0
     };
 
     for (uint32_t i = 0; i < stream->count; i++) {
@@ -2278,10 +2274,9 @@ CYAML_API char* cyaml_stream_emit(const cyaml_stream_t* stream, size_t* len)
 {
     if (!stream)
         return NULL;
-    static const cyaml_emit_opts_t emit_opts = { 2, 80, false, false, false, CYAML_PLAIN, CYAML_BLOCK };
 
     emitter_t e = {
-        .buf = NULL, .len = 0, .cap = 0, .opts = emit_opts, .doc = NULL, .flags = 0, .comment_idx = 0, .last_line = 0
+        .buf = NULL, .len = 0, .cap = 0, .opts = CYAML_EMIT_DEFAULT, .doc = NULL, .flags = 0, .comment_idx = 0, .last_line = 0
     };
 
     for (uint32_t i = 0; i < stream->count; i++) {
