@@ -93,7 +93,8 @@ jobs:
 
       - name: Generate summary (Windows)
         if: startsWith(matrix.os, 'windows') && always()
-        run: cd build && .\Release\summary_gen.exe >> $env:GITHUB_STEP_SUMMARY
+        working-directory: build
+        run: .\Release\summary_gen.exe >> $env:GITHUB_STEP_SUMMARY
         shell: pwsh
 
       - name: Save test results cache
