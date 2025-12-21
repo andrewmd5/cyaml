@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -47,12 +48,14 @@ jobs:
         if: "!startsWith(matrix.os, 'windows')"
         run: |
           cd refs/yaml-test-suite
+          git fetch origin data:data
           make data
 
       - name: Setup test suite (Windows)
         if: startsWith(matrix.os, 'windows')
         run: |
-          cd refs\yaml-test-suite
+          cd refs/yaml-test-suite
+          git fetch origin data:data
           make data
         shell: bash
 
@@ -84,11 +87,21 @@ jobs:
 
       - name: Test (Windows)
         if: startsWith(matrix.os, 'windows')
+        working-directory: build
         run: |
-          cd build
           .\Release\cyaml_suite.exe ..\refs\yaml-test-suite\data
           .\Release\ypath_test.exe ..\refs\ypath\tests.yml
           .\Release\test_api.exe
+
+      - name: Generate summary (Unix)
+        if: "!startsWith(matrix.os, 'windows') && always()"
+        run: cd build && ./summary_gen >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate summary (Windows)
+        if: startsWith(matrix.os, 'windows') && always()
+        working-directory: build
+        run: .\Release\summary_gen.exe >> $env:GITHUB_STEP_SUMMARY
+        shell: pwsh
 
       - name: Package (macOS)
         if: startsWith(matrix.os, 'macos')
