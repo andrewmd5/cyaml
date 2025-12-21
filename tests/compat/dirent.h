@@ -6,7 +6,10 @@
 
 #ifdef _WIN32
 
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 struct dirent {
@@ -27,7 +30,7 @@ static inline DIR* opendir(const char* path)
         return NULL;
 
     char search_path[MAX_PATH];
-    snprintf(search_path, sizeof(search_path), "%s\\*", path);
+    _snprintf_s(search_path, sizeof(search_path), _TRUNCATE, "%s\\*", path);
 
     dir->hFind = FindFirstFileA(search_path, &dir->ffd);
     if (dir->hFind == INVALID_HANDLE_VALUE) {
@@ -50,8 +53,7 @@ static inline struct dirent* readdir(DIR* dir)
             return NULL;
     }
 
-    strncpy(dir->ent.d_name, dir->ffd.cFileName, MAX_PATH - 1);
-    dir->ent.d_name[MAX_PATH - 1] = '\0';
+    strncpy_s(dir->ent.d_name, MAX_PATH, dir->ffd.cFileName, _TRUNCATE);
     return &dir->ent;
 }
 
@@ -66,6 +68,10 @@ static inline int closedir(DIR* dir)
 
 #else
 // Unix systems have native dirent.h
+#if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200809L
+#undef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <dirent.h>
 #endif
 

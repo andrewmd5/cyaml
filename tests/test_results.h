@@ -1,6 +1,13 @@
 #ifndef TEST_RESULTS_H
 #define TEST_RESULTS_H
 
+#if !defined(_WIN32)
+#if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200809L
+#undef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#endif
+
 #include "cyaml_utf8.h"
 #include <stdbool.h>
 #include <stdio.h>

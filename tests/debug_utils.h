@@ -1,6 +1,13 @@
 #ifndef DEBUG_UTILS_H
 #define DEBUG_UTILS_H
 
+#if !defined(_WIN32)
+#if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200809L
+#undef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#endif
+
 #include "cyaml.h"
 #include "cyaml_utf8.h"
 #include <ctype.h>
@@ -9,6 +16,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#define strcasecmp _stricmp
+#else
+#include <strings.h>
+#endif
 
 // #region File I/O
 
