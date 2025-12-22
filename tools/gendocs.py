@@ -572,7 +572,8 @@ def main():
     versions = json.loads(versions_file.read_text()) if versions_file.exists() else []
 
     if version not in versions:
-        versions.insert(0, version)
+        versions.append(version)
+        versions.sort(key=lambda v: [int(x) for x in v.lstrip('v').split('.')], reverse=True)
         versions_file.write_text(json.dumps(versions, indent=2))
 
     # Create version directory
