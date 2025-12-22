@@ -1,17 +1,5 @@
 #include "cyaml_internal.h"
 
-// #region Helpers
-
-//! Get line span of a node (end_line - start_line)
-static uint32_t span_line_count(cyaml_span_t span)
-{
-    if (span.end_line == 0 || span.start_line == 0)
-        return 0;
-    return span.end_line - span.start_line;
-}
-
-// #endregion
-
 // #region Emitter State
 
 typedef enum {
@@ -296,11 +284,6 @@ static bool needs_quoting_ex(const char* s, size_t len, size_t tag_len)
             return true;
     }
     return false;
-}
-
-static bool needs_quoting(const char* s, size_t len)
-{
-    return needs_quoting_ex(s, len, 0);
 }
 
 // #endregion
@@ -659,207 +642,387 @@ static bool emit_scalar(emitter_t* e, const cyaml_node_t* n, int depth)
     return result;
 }
 
-static bool emit_block_seq(emitter_t* e, const cyaml_node_t* n, int depth);
-static bool emit_block_map(emitter_t* e, const cyaml_node_t* n, int depth);
-static bool emit_flow_seq(emitter_t* e, const cyaml_node_t* n, int depth);
-static bool emit_flow_map(emitter_t* e, const cyaml_node_t* n, int depth);
+#define EMIT_STACK_INIT_CAP 32
 
-static bool emit_node(emitter_t* e, const cyaml_node_t* n, int depth)
+typedef enum {
+    EMITF_VALUE,
+    EMITF_FLOW_SEQ,
+    EMITF_FLOW_SEQ_CLOSE,
+    EMITF_FLOW_MAP,
+    EMITF_FLOW_MAP_VAL,
+    EMITF_FLOW_MAP_CLOSE,
+    EMITF_BLOCK_SEQ,
+    EMITF_BLOCK_SEQ_COMMENT,
+    EMITF_BLOCK_MAP,
+    EMITF_BLOCK_MAP_KEY,
+    EMITF_BLOCK_MAP_VAL,
+    EMITF_BLOCK_MAP_COMMENT,
+    EMITF_COMPACT_SEQ
+} emit_frame_state_t;
+
+typedef struct {
+    const cyaml_node_t* node;
+    uint32_t child_idx;
+    emit_frame_state_t state;
+    int depth;
+    uint8_t flags;
+} emit_frame_t;
+
+#define EMITF_SKIP_PROPS 1
+
+#define DUMP_STACK_INIT_CAP 32
+
+#define EMIT_PUSH(stk, cnt, cap, nd, st, dp, fl, on_fail)                 \
+    do {                                                                  \
+        if ((cnt) >= (cap)) {                                             \
+            size_t new_cap = (cap) * 2;                                   \
+            emit_frame_t* tmp = realloc((stk), new_cap * sizeof(*(stk))); \
+            if (!tmp) {                                                   \
+                on_fail;                                                  \
+            }                                                             \
+            (stk) = tmp;                                                  \
+            (cap) = new_cap;                                              \
+        }                                                                 \
+        (stk)[(cnt)] = (emit_frame_t) { (nd), 0, (st), (dp), (fl) };      \
+        (cnt)++;                                                          \
+    } while (0)
+
+#define EM_PUSH(nd, st, dp, fl) \
+    EMIT_PUSH(stack, stack_count, stack_cap, nd, st, dp, fl, { result = false; goto cleanup; })
+
+#define EM_FAIL()       \
+    do {                \
+        result = false; \
+        goto cleanup;   \
+    } while (0)
+
+static bool emit_node(emitter_t* e, const cyaml_node_t* root, int start_depth)
 {
-    if (!n || n->type == CYAML_NONE) {
+    if (!root || root->type == CYAML_NONE) {
         EMIT_S(e, S_NULL);
         return true;
     }
 
-    switch (n->type) {
-    case CYAML_NULL:
-        EMIT_PROPS(e, n);
-        EMIT_S(e, S_NULL);
-        return true;
+    emit_frame_t* stack = malloc(EMIT_STACK_INIT_CAP * sizeof(*stack));
+    if (!stack)
+        return false;
+    size_t stack_count = 0;
+    size_t stack_cap = EMIT_STACK_INIT_CAP;
+    bool result = true;
 
-    case CYAML_SCALAR:
-        EMIT_PROPS(e, n);
-        return emit_scalar(e, n, depth);
+    EM_PUSH(root, EMITF_VALUE, start_depth, 0);
 
-    case CYAML_SEQ:
-        if (!e->opts.preserve_style && !EMIT_IS_DUMP(e) && n->style == (cyaml_style_t)CYAML_FLOW && n->seq.count > 0) {
-            EMIT_PROPS(e, n);
-            return emit_block_seq(e, n, depth);
-        }
-        if (n->style == (cyaml_style_t)CYAML_FLOW || e->opts.coll == CYAML_FLOW) {
-            EMIT_PROPS(e, n);
-            return emit_flow_seq(e, n, depth);
-        }
-        EMIT_PROPS(e, n);
-        return emit_block_seq(e, n, depth);
+    while (stack_count > 0) {
+        emit_frame_t* f = &stack[stack_count - 1];
+        const cyaml_node_t* n = f->node;
 
-    case CYAML_MAP:
-        if (!e->opts.preserve_style && !EMIT_IS_DUMP(e) && n->style == (cyaml_style_t)CYAML_FLOW && n->map.count > 0) {
-            EMIT_PROPS(e, n);
-            return emit_block_map(e, n, depth);
-        }
-        if (n->style == (cyaml_style_t)CYAML_FLOW || e->opts.coll == CYAML_FLOW) {
-            EMIT_PROPS(e, n);
-            return emit_flow_map(e, n, depth);
-        }
-        EMIT_PROPS(e, n);
-        return emit_block_map(e, n, depth);
-
-    case CYAML_ALIAS:
-        EMIT(e, '*');
-        return emit_str(e, cyaml_src(e->doc) + n->anchor.off, n->anchor.len);
-
-    default:
-        CYAML_UNREACHABLE("invalid node type");
-    }
-}
-
-static bool emit_flow_seq(emitter_t* e, const cyaml_node_t* n, int depth)
-{
-    EMIT(e, '[');
-    for (uint32_t i = 0; i < n->seq.count; i++) {
-        if (i > 0)
-            EMIT_S(e, ", ");
-        NODE(e, n->seq.items[i], depth);
-    }
-    EMIT(e, ']');
-    return true;
-}
-
-static bool emit_flow_map(emitter_t* e, const cyaml_node_t* n, int depth)
-{
-    EMIT(e, '{');
-    for (uint32_t i = 0; i < n->map.count; i++) {
-        if (i > 0)
-            EMIT_S(e, ", ");
-        NODE(e, n->map.pairs[i].key, depth);
-        EMIT_S(e, ": ");
-        NODE(e, n->map.pairs[i].val, depth);
-    }
-    EMIT(e, '}');
-    return true;
-}
-
-static bool emit_block_seq(emitter_t* e, const cyaml_node_t* n, int depth)
-{
-    for (uint32_t i = 0; i < n->seq.count; i++) {
-        cyaml_node_t* item = n->seq.items[i];
-        if (item && e->opts.preserve_comments)
-            if (!emit_comments_before_line(e, item->span.start_line, depth))
-                return false;
-        bool already_newline = (EMIT_LAST(e) == C_LF);
-        if (i > 0 || (depth > 0 && !already_newline))
-            EMIT(e, C_LF);
-        INDENT(e, depth);
-        EMIT_S(e, "- ");
-        NODE(e, item, depth + 1);
-        if (item && e->opts.preserve_comments && item->type == CYAML_SCALAR)
-            if (!emit_inline_comment(e, item->span.end_line))
-                return false;
-    }
-    return true;
-}
-
-//! Emit sequence in compact format (first item inline, rest indented)
-static bool emit_compact_seq(emitter_t* e, const cyaml_node_t* n, int indent)
-{
-    for (uint32_t i = 0; i < n->seq.count; i++) {
-        if (i > 0) {
-            EMIT(e, C_LF);
-            INDENT(e, indent);
-        }
-        EMIT_S(e, "- ");
-        NODE(e, n->seq.items[i], indent + 1);
-    }
-    return true;
-}
-
-static bool emit_block_map(emitter_t* e, const cyaml_node_t* n, int depth)
-{
-    for (uint32_t i = 0; i < n->map.count; i++) {
-        const cyaml_node_t* key = n->map.pairs[i].key;
-        const cyaml_node_t* val = n->map.pairs[i].val;
-        if (key && e->opts.preserve_comments)
-            if (!emit_comments_before_line(e, key->span.start_line, depth))
-                return false;
-        bool just_after_dash = (EMIT_PREV(e) == '-' && EMIT_LAST(e) == C_SP);
-        bool already_newline = (EMIT_LAST(e) == C_LF);
-        if (i > 0 || (depth > 0 && !just_after_dash && !already_newline))
-            EMIT(e, C_LF);
-        if (i > 0 || (!just_after_dash && (depth > 0 || already_newline))) {
-            INDENT(e, depth);
-        }
-        bool key_is_empty = !key || key->type == CYAML_NULL || key->type == CYAML_NONE;
-        bool key_is_complex = key && (key->type == CYAML_MAP || key->type == CYAML_SEQ);
-
-        if (key_is_complex) {
-            EMIT_S(e, "? ");
-            if (key->type == CYAML_SEQ) {
-                if (!emit_compact_seq(e, key, depth + 1))
-                    return false;
-            } else {
-                NODE(e, key, depth);
+        switch (f->state) {
+        case EMITF_VALUE: {
+            stack_count--;
+            if (!n || n->type == CYAML_NONE) {
+                if (!emit_cstr(e, S_NULL))
+                    EM_FAIL();
+                break;
             }
-            EMIT(e, C_LF);
-            INDENT(e, depth);
-        } else if (!key_is_empty) {
-            NODE(e, key, depth);
-        }
-
-        bool val_is_empty = !val || val->type == CYAML_NULL || val->type == CYAML_NONE;
-        if (!val_is_empty && val->type == CYAML_SCALAR && val->style == CYAML_PLAIN) {
-            char* vs = cyaml_scalar_str(e->doc, val);
-            if (vs && strlen(vs) == 0)
-                val_is_empty = true;
-            free(vs);
-        }
-        bool val_is_block = false;
-        if (val && (val->type == CYAML_MAP || val->type == CYAML_SEQ)) {
-            if (val->style != (cyaml_style_t)CYAML_FLOW) {
-                val_is_block = true;
-            } else if (!e->opts.preserve_style && !EMIT_IS_DUMP(e)) {
-                uint32_t count = val->type == CYAML_MAP ? val->map.count : val->seq.count;
-                if (count > 0)
-                    val_is_block = true;
-            }
-        }
-
-        if (val_is_empty) {
-            EMIT(e, ':');
-        } else if (key_is_complex && val->type == CYAML_SEQ) {
-            EMIT_S(e, ": ");
-            if (!emit_compact_seq(e, val, depth + 1))
-                return false;
-        } else if (val_is_block) {
-            bool val_has_props = val->anchor.len > 0 || val->tag.len > 0;
-            if (val_has_props) {
-                // Emit props on same line as key, then newline
-                EMIT_S(e, ": ");
-                EMIT_PROPS(e, val);
-                EMIT(e, C_LF);
-                int val_depth = (val->type == CYAML_SEQ) ? depth : depth + 1;
-                // Emit collection without props (already emitted)
-                if (val->type == CYAML_SEQ) {
-                    if (!emit_block_seq(e, val, val_depth))
-                        return false;
+            bool skip_props = (f->flags & EMITF_SKIP_PROPS);
+            switch (n->type) {
+            case CYAML_NULL:
+                if (!skip_props) {
+                    if (!emit_anchor(e, n))
+                        EM_FAIL();
+                    if (!emit_tag(e, n))
+                        EM_FAIL();
+                }
+                if (!emit_cstr(e, S_NULL))
+                    EM_FAIL();
+                break;
+            case CYAML_SCALAR:
+                if (!skip_props) {
+                    if (!emit_anchor(e, n))
+                        EM_FAIL();
+                    if (!emit_tag(e, n))
+                        EM_FAIL();
+                }
+                if (!emit_scalar(e, n, f->depth))
+                    EM_FAIL();
+                break;
+            case CYAML_SEQ: {
+                if (!skip_props) {
+                    if (!emit_anchor(e, n))
+                        EM_FAIL();
+                    if (!emit_tag(e, n))
+                        EM_FAIL();
+                }
+                bool use_flow = (n->style == (cyaml_style_t)CYAML_FLOW || e->opts.coll == CYAML_FLOW);
+                bool convert_to_block = (!e->opts.preserve_style && !EMIT_IS_DUMP(e) && n->style == (cyaml_style_t)CYAML_FLOW && n->seq.count > 0);
+                if (convert_to_block || !use_flow) {
+                    EM_PUSH(n, EMITF_BLOCK_SEQ, f->depth, 0);
                 } else {
-                    if (!emit_block_map(e, val, val_depth))
-                        return false;
+                    if (!emit_char(e, '['))
+                        EM_FAIL();
+                    if (n->seq.count > 0) {
+                        EM_PUSH(n, EMITF_FLOW_SEQ, f->depth, 0);
+                    } else {
+                        if (!emit_char(e, ']'))
+                            EM_FAIL();
+                    }
+                }
+                break;
+            }
+            case CYAML_MAP: {
+                if (!skip_props) {
+                    if (!emit_anchor(e, n))
+                        EM_FAIL();
+                    if (!emit_tag(e, n))
+                        EM_FAIL();
+                }
+                bool use_flow = (n->style == (cyaml_style_t)CYAML_FLOW || e->opts.coll == CYAML_FLOW);
+                bool convert_to_block = (!e->opts.preserve_style && !EMIT_IS_DUMP(e) && n->style == (cyaml_style_t)CYAML_FLOW && n->map.count > 0);
+                if (convert_to_block || !use_flow) {
+                    EM_PUSH(n, EMITF_BLOCK_MAP, f->depth, 0);
+                } else {
+                    if (!emit_char(e, '{'))
+                        EM_FAIL();
+                    if (n->map.count > 0) {
+                        EM_PUSH(n, EMITF_FLOW_MAP, f->depth, 0);
+                    } else {
+                        if (!emit_char(e, '}'))
+                            EM_FAIL();
+                    }
+                }
+                break;
+            }
+            case CYAML_ALIAS:
+                if (!emit_char(e, '*'))
+                    EM_FAIL();
+                if (!emit_str(e, cyaml_src(e->doc) + n->anchor.off, n->anchor.len))
+                    EM_FAIL();
+                break;
+            default:
+                break;
+            }
+            break;
+        }
+
+        case EMITF_FLOW_SEQ:
+            if (f->child_idx >= n->seq.count) {
+                f->state = EMITF_FLOW_SEQ_CLOSE;
+            } else {
+                if (f->child_idx > 0)
+                    if (!emit_cstr(e, ", "))
+                        EM_FAIL();
+                uint32_t idx = f->child_idx++;
+                EM_PUSH(n->seq.items[idx], EMITF_VALUE, f->depth, 0);
+            }
+            break;
+
+        case EMITF_FLOW_SEQ_CLOSE:
+            if (!emit_char(e, ']'))
+                EM_FAIL();
+            stack_count--;
+            break;
+
+        case EMITF_FLOW_MAP:
+            if (f->child_idx >= n->map.count) {
+                f->state = EMITF_FLOW_MAP_CLOSE;
+            } else {
+                if (f->child_idx > 0)
+                    if (!emit_cstr(e, ", "))
+                        EM_FAIL();
+                f->state = EMITF_FLOW_MAP_VAL;
+                EM_PUSH(n->map.pairs[f->child_idx].key, EMITF_VALUE, f->depth, 0);
+            }
+            break;
+
+        case EMITF_FLOW_MAP_VAL:
+            if (!emit_cstr(e, ": "))
+                EM_FAIL();
+            f->state = EMITF_FLOW_MAP;
+            EM_PUSH(n->map.pairs[f->child_idx++].val, EMITF_VALUE, f->depth, 0);
+            break;
+
+        case EMITF_FLOW_MAP_CLOSE:
+            if (!emit_char(e, '}'))
+                EM_FAIL();
+            stack_count--;
+            break;
+
+        case EMITF_BLOCK_SEQ: {
+            if (f->child_idx >= n->seq.count) {
+                stack_count--;
+                break;
+            }
+            cyaml_node_t* item = n->seq.items[f->child_idx];
+            if (item && e->opts.preserve_comments)
+                if (!emit_comments_before_line(e, item->span.start_line, f->depth))
+                    EM_FAIL();
+            bool already_newline = (EMIT_LAST(e) == C_LF);
+            if (f->child_idx > 0 || (f->depth > 0 && !already_newline))
+                if (!emit_char(e, C_LF))
+                    EM_FAIL();
+            if (!emit_indent(e, f->depth))
+                EM_FAIL();
+            if (!emit_cstr(e, "- "))
+                EM_FAIL();
+            f->state = EMITF_BLOCK_SEQ_COMMENT;
+            EM_PUSH(item, EMITF_VALUE, f->depth + 1, 0);
+            break;
+        }
+
+        case EMITF_BLOCK_SEQ_COMMENT: {
+            cyaml_node_t* item = n->seq.items[f->child_idx++];
+            if (item && e->opts.preserve_comments && item->type == CYAML_SCALAR)
+                if (!emit_inline_comment(e, item->span.end_line))
+                    EM_FAIL();
+            f->state = EMITF_BLOCK_SEQ;
+            break;
+        }
+
+        case EMITF_BLOCK_MAP: {
+            if (f->child_idx >= n->map.count) {
+                stack_count--;
+                break;
+            }
+            const cyaml_node_t* key = n->map.pairs[f->child_idx].key;
+            if (key && e->opts.preserve_comments)
+                if (!emit_comments_before_line(e, key->span.start_line, f->depth))
+                    EM_FAIL();
+            bool just_after_dash = (EMIT_PREV(e) == '-' && EMIT_LAST(e) == C_SP);
+            bool already_newline = (EMIT_LAST(e) == C_LF);
+            if (f->child_idx > 0 || (f->depth > 0 && !just_after_dash && !already_newline))
+                if (!emit_char(e, C_LF))
+                    EM_FAIL();
+            if (f->child_idx > 0 || (!just_after_dash && (f->depth > 0 || already_newline)))
+                if (!emit_indent(e, f->depth))
+                    EM_FAIL();
+            bool key_is_empty = !key || key->type == CYAML_NULL || key->type == CYAML_NONE;
+            bool key_is_complex = key && (key->type == CYAML_MAP || key->type == CYAML_SEQ);
+            if (key_is_complex) {
+                if (!emit_cstr(e, "? "))
+                    EM_FAIL();
+                if (key->type == CYAML_SEQ) {
+                    f->state = EMITF_BLOCK_MAP_KEY;
+                    EM_PUSH(key, EMITF_COMPACT_SEQ, f->depth + 1, 0);
+                } else {
+                    f->state = EMITF_BLOCK_MAP_KEY;
+                    EM_PUSH(key, EMITF_VALUE, f->depth, 0);
                 }
             } else {
-                EMIT_S(e, ":\n");
-                int val_depth = (val->type == CYAML_SEQ) ? depth : depth + 1;
-                NODE(e, val, val_depth);
+                if (key_is_empty) {
+                    f->state = EMITF_BLOCK_MAP_VAL;
+                } else {
+                    f->state = EMITF_BLOCK_MAP_VAL;
+                    EM_PUSH(key, EMITF_VALUE, f->depth, 0);
+                }
             }
-        } else {
-            EMIT_S(e, ": ");
-            NODE(e, val, depth + 1);
+            break;
+        }
+
+        case EMITF_BLOCK_MAP_KEY: {
+            if (!emit_char(e, C_LF))
+                EM_FAIL();
+            if (!emit_indent(e, f->depth))
+                EM_FAIL();
+            f->state = EMITF_BLOCK_MAP_VAL;
+            break;
+        }
+
+        case EMITF_BLOCK_MAP_VAL: {
+            const cyaml_node_t* key = n->map.pairs[f->child_idx].key;
+            const cyaml_node_t* val = n->map.pairs[f->child_idx].val;
+            bool key_is_complex = key && (key->type == CYAML_MAP || key->type == CYAML_SEQ);
+            bool val_is_empty = !val || val->type == CYAML_NULL || val->type == CYAML_NONE;
+            if (!val_is_empty && val->type == CYAML_SCALAR && val->style == CYAML_PLAIN) {
+                char* vs = cyaml_scalar_str(e->doc, val);
+                if (vs && strlen(vs) == 0)
+                    val_is_empty = true;
+                free(vs);
+            }
+            bool val_is_block = false;
+            if (val && (val->type == CYAML_MAP || val->type == CYAML_SEQ)) {
+                if (val->style != (cyaml_style_t)CYAML_FLOW) {
+                    val_is_block = true;
+                } else if (!e->opts.preserve_style && !EMIT_IS_DUMP(e)) {
+                    uint32_t count = val->type == CYAML_MAP ? val->map.count : val->seq.count;
+                    if (count > 0)
+                        val_is_block = true;
+                }
+            }
+            if (val_is_empty) {
+                if (!emit_char(e, ':'))
+                    EM_FAIL();
+                f->child_idx++;
+                f->state = EMITF_BLOCK_MAP;
+            } else if (key_is_complex && val->type == CYAML_SEQ) {
+                if (!emit_cstr(e, ": "))
+                    EM_FAIL();
+                f->state = EMITF_BLOCK_MAP_COMMENT;
+                EM_PUSH(val, EMITF_COMPACT_SEQ, f->depth + 1, 0);
+            } else if (val_is_block) {
+                bool val_has_props = val->anchor.len > 0 || val->tag.len > 0;
+                int val_depth = (val->type == CYAML_SEQ) ? f->depth : f->depth + 1;
+                if (val_has_props) {
+                    if (!emit_cstr(e, ": "))
+                        EM_FAIL();
+                    if (!emit_anchor(e, val))
+                        EM_FAIL();
+                    if (!emit_tag(e, val))
+                        EM_FAIL();
+                    if (!emit_char(e, C_LF))
+                        EM_FAIL();
+                    f->state = EMITF_BLOCK_MAP_COMMENT;
+                    if (val->type == CYAML_SEQ) {
+                        EM_PUSH(val, EMITF_BLOCK_SEQ, val_depth, EMITF_SKIP_PROPS);
+                    } else {
+                        EM_PUSH(val, EMITF_BLOCK_MAP, val_depth, EMITF_SKIP_PROPS);
+                    }
+                } else {
+                    if (!emit_cstr(e, ":\n"))
+                        EM_FAIL();
+                    f->state = EMITF_BLOCK_MAP_COMMENT;
+                    EM_PUSH(val, EMITF_VALUE, val_depth, 0);
+                }
+            } else {
+                if (!emit_cstr(e, ": "))
+                    EM_FAIL();
+                f->state = EMITF_BLOCK_MAP_COMMENT;
+                EM_PUSH(val, EMITF_VALUE, f->depth + 1, 0);
+            }
+            break;
+        }
+
+        case EMITF_BLOCK_MAP_COMMENT: {
+            const cyaml_node_t* val = n->map.pairs[f->child_idx++].val;
             if (e->opts.preserve_comments && val && val->type == CYAML_SCALAR)
                 if (!emit_inline_comment(e, val->span.end_line))
-                    return false;
+                    EM_FAIL();
+            f->state = EMITF_BLOCK_MAP;
+            break;
+        }
+
+        case EMITF_COMPACT_SEQ: {
+            if (f->child_idx >= n->seq.count) {
+                stack_count--;
+                break;
+            }
+            if (f->child_idx > 0) {
+                if (!emit_char(e, C_LF))
+                    EM_FAIL();
+                if (!emit_indent(e, f->depth))
+                    EM_FAIL();
+            }
+            if (!emit_cstr(e, "- "))
+                EM_FAIL();
+            uint32_t idx = f->child_idx++;
+            EM_PUSH(n->seq.items[idx], EMITF_VALUE, f->depth + 1, 0);
+            break;
+        }
         }
     }
-    return true;
+
+cleanup:
+    free(stack);
+    return result;
 }
 
 // #endregion
@@ -996,11 +1159,6 @@ static bool can_be_plain_ex(const char* s, size_t len, size_t tag_len)
     return true;
 }
 
-static bool can_be_plain(const char* s, size_t len)
-{
-    return can_be_plain_ex(s, len, 0);
-}
-
 //! Check if content can be single-quoted
 static bool can_be_single(const char* s, size_t len)
 {
@@ -1012,124 +1170,151 @@ static bool can_be_single(const char* s, size_t len)
     return true;
 }
 
-//! Check if a block scalar has tabs (preserved as content)
-static bool has_block_scalar_tabs(const cyaml_doc_t* doc, const cyaml_node_t* n)
+#define TREE_CHECK_STACK_CAP 64
+
+typedef struct {
+    const cyaml_node_t* node;
+    uint32_t child_idx;
+} tree_check_frame_t;
+
+#define TREE_CHECK_PUSH(stk, cnt, cap, nd) \
+    do {                                   \
+        const cyaml_node_t* _nd = (nd);    \
+        if (_nd && (cnt) < (cap)) {        \
+            (stk)[(cnt)].node = _nd;       \
+            (stk)[(cnt)++].child_idx = 0;  \
+        }                                  \
+    } while (0)
+
+static bool has_block_scalar_tabs(const cyaml_doc_t* doc, const cyaml_node_t* root)
 {
-    if (!n)
+    if (!root)
         return false;
-    if (n->type == CYAML_SCALAR && (n->style == CYAML_LITERAL || n->style == CYAML_FOLDED) && n->span.len > 0) {
-        const char* src = cyaml_src(doc);
-        if (src) {
-            for (uint32_t i = n->span.off; i < n->span.off + n->span.len; i++) {
-                if (src[i] == C_TAB)
-                    return true;
+
+    tree_check_frame_t stack[TREE_CHECK_STACK_CAP];
+    size_t sp = 0;
+    const char* src = cyaml_src(doc);
+    if (!src)
+        return false;
+
+    TREE_CHECK_PUSH(stack, sp, TREE_CHECK_STACK_CAP, root);
+
+    while (sp > 0) {
+        tree_check_frame_t* f = &stack[sp - 1];
+        const cyaml_node_t* n = f->node;
+
+        if (f->child_idx == 0) {
+            if (n->type == CYAML_SCALAR && (n->style == CYAML_LITERAL || n->style == CYAML_FOLDED) && n->span.len > 0) {
+                for (uint32_t i = n->span.off; i < n->span.off + n->span.len; i++) {
+                    if (src[i] == C_TAB)
+                        return true;
+                }
             }
         }
-    }
-    if (n->type == CYAML_SEQ) {
-        for (uint32_t i = 0; i < n->seq.count; i++) {
-            if (has_block_scalar_tabs(doc, n->seq.items[i]))
-                return true;
-        }
-    }
-    if (n->type == CYAML_MAP) {
-        for (uint32_t i = 0; i < n->map.count; i++) {
-            if (has_block_scalar_tabs(doc, n->map.pairs[i].key))
-                return true;
-            if (has_block_scalar_tabs(doc, n->map.pairs[i].val))
-                return true;
+
+        if (n->type == CYAML_SEQ && f->child_idx < n->seq.count) {
+            TREE_CHECK_PUSH(stack, sp, TREE_CHECK_STACK_CAP, n->seq.items[f->child_idx++]);
+        } else if (n->type == CYAML_MAP && f->child_idx < n->map.count * 2) {
+            uint32_t pair_idx = f->child_idx / 2;
+            cyaml_node_t* child = (f->child_idx % 2 == 0) ? n->map.pairs[pair_idx].key : n->map.pairs[pair_idx].val;
+            f->child_idx++;
+            TREE_CHECK_PUSH(stack, sp, TREE_CHECK_STACK_CAP, child);
+        } else {
+            sp--;
         }
     }
     return false;
 }
 
-//! Check if a double-quoted scalar has tabs in line-folding position that get normalized
-//! Only checks within collections, not root scalars (which don't need --- marker).
-static bool has_folding_tabs_in_collection(const cyaml_doc_t* doc, const cyaml_node_t* n)
+static bool has_folding_tabs_in_collection(const cyaml_doc_t* doc, const cyaml_node_t* root)
 {
-    if (!n)
+    if (!root)
         return false;
-    // Only check scalars that are inside collections
-    if (n->type == CYAML_SCALAR && n->style == CYAML_DOUBLE && n->span.len > 0) {
-        const char* src = cyaml_src(doc);
-        if (src) {
-            // Look for tabs in folding position (after newline, possibly with spaces)
-            bool after_newline = false;
-            for (uint32_t i = n->span.off; i < n->span.off + n->span.len; i++) {
-                char c = src[i];
-                if (c == C_LF || c == C_CR) {
-                    after_newline = true;
-                } else if (after_newline) {
-                    if (c == C_SP) {
-                        // Still in leading whitespace
-                    } else if (c == C_TAB) {
-                        // Tab in folding position - normalized to space
-                        return true;
-                    } else {
+
+    tree_check_frame_t stack[TREE_CHECK_STACK_CAP];
+    size_t sp = 0;
+    const char* src = cyaml_src(doc);
+    if (!src)
+        return false;
+
+    TREE_CHECK_PUSH(stack, sp, TREE_CHECK_STACK_CAP, root);
+
+    while (sp > 0) {
+        tree_check_frame_t* f = &stack[sp - 1];
+        const cyaml_node_t* n = f->node;
+
+        if (f->child_idx == 0) {
+            if (n->type == CYAML_SCALAR && n->style == CYAML_DOUBLE && n->span.len > 0) {
+                bool after_newline = false;
+                for (uint32_t i = n->span.off; i < n->span.off + n->span.len; i++) {
+                    char c = src[i];
+                    if (c == C_LF || c == C_CR) {
+                        after_newline = true;
+                    } else if (after_newline) {
+                        if (c == C_SP)
+                            continue; // still in leading whitespace
+                        if (c == C_TAB)
+                            return true;
                         after_newline = false;
                     }
                 }
             }
         }
-    }
-    if (n->type == CYAML_SEQ) {
-        for (uint32_t i = 0; i < n->seq.count; i++) {
-            if (has_folding_tabs_in_collection(doc, n->seq.items[i]))
-                return true;
-        }
-    }
-    if (n->type == CYAML_MAP) {
-        for (uint32_t i = 0; i < n->map.count; i++) {
-            if (has_folding_tabs_in_collection(doc, n->map.pairs[i].key))
-                return true;
-            if (has_folding_tabs_in_collection(doc, n->map.pairs[i].val))
-                return true;
+
+        if (n->type == CYAML_SEQ && f->child_idx < n->seq.count) {
+            TREE_CHECK_PUSH(stack, sp, TREE_CHECK_STACK_CAP, n->seq.items[f->child_idx++]);
+        } else if (n->type == CYAML_MAP && f->child_idx < n->map.count * 2) {
+            uint32_t pair_idx = f->child_idx / 2;
+            cyaml_node_t* child = (f->child_idx % 2 == 0) ? n->map.pairs[pair_idx].key : n->map.pairs[pair_idx].val;
+            f->child_idx++;
+            TREE_CHECK_PUSH(stack, sp, TREE_CHECK_STACK_CAP, child);
+        } else {
+            sp--;
         }
     }
     return false;
 }
 
-//! Check if a block scalar will be converted due to trailing whitespace at the end
-//! Internal blank lines with whitespace are OK (preserved in literal blocks).
-//! But content ending with whitespace (no trailing newline) is problematic.
-static bool block_scalar_needs_conversion(const cyaml_doc_t* doc, const cyaml_node_t* n)
+static bool block_scalar_needs_conversion(const cyaml_doc_t* doc, const cyaml_node_t* root)
 {
-    if (!n)
+    if (!root)
         return false;
-    if (n->type == CYAML_SCALAR && (n->style == CYAML_LITERAL || n->style == CYAML_FOLDED)) {
-        // With KEEP chomping, trailing whitespace is explicitly preserved
-        // and will be correctly represented in the literal block
-        if (n->chomp == CYAML_KEEP) {
-            return false;
-        }
-        char* s = cyaml_scalar_str(doc, n);
-        if (s) {
-            size_t len = strlen(s);
-            // Check if content ends with whitespace (possibly before trailing newlines)
-            // This is problematic because it would appear as trailing whitespace
-            // on the final content line in the literal block.
-            // Skip trailing newlines first (from CLIP/KEEP chomping)
-            while (len > 0 && s[len - 1] == C_LF)
-                len--;
-            if (len > 0 && (s[len - 1] == C_SP || s[len - 1] == C_TAB)) {
-                free(s);
-                return true;
+
+    tree_check_frame_t stack[TREE_CHECK_STACK_CAP];
+    size_t sp = 0;
+
+    TREE_CHECK_PUSH(stack, sp, TREE_CHECK_STACK_CAP, root);
+
+    while (sp > 0) {
+        tree_check_frame_t* f = &stack[sp - 1];
+        const cyaml_node_t* n = f->node;
+
+        if (f->child_idx == 0) {
+            if (n->type == CYAML_SCALAR && (n->style == CYAML_LITERAL || n->style == CYAML_FOLDED)) {
+                if (n->chomp != CYAML_KEEP) {
+                    char* s = cyaml_scalar_str(doc, n);
+                    if (s) {
+                        size_t len = strlen(s);
+                        while (len > 0 && s[len - 1] == C_LF)
+                            len--;
+                        bool needs_conv = (len > 0 && (s[len - 1] == C_SP || s[len - 1] == C_TAB));
+                        free(s);
+                        if (needs_conv)
+                            return true;
+                    }
+                }
             }
-            free(s);
         }
-    }
-    if (n->type == CYAML_SEQ) {
-        for (uint32_t i = 0; i < n->seq.count; i++) {
-            if (block_scalar_needs_conversion(doc, n->seq.items[i]))
-                return true;
-        }
-    }
-    if (n->type == CYAML_MAP) {
-        for (uint32_t i = 0; i < n->map.count; i++) {
-            if (block_scalar_needs_conversion(doc, n->map.pairs[i].key))
-                return true;
-            if (block_scalar_needs_conversion(doc, n->map.pairs[i].val))
-                return true;
+
+        if (n->type == CYAML_SEQ && f->child_idx < n->seq.count) {
+            TREE_CHECK_PUSH(stack, sp, TREE_CHECK_STACK_CAP, n->seq.items[f->child_idx++]);
+        } else if (n->type == CYAML_MAP && f->child_idx < n->map.count * 2) {
+            uint32_t pair_idx = f->child_idx / 2;
+            cyaml_node_t* child = (f->child_idx % 2 == 0) ? n->map.pairs[pair_idx].key : n->map.pairs[pair_idx].val;
+            f->child_idx++;
+            TREE_CHECK_PUSH(stack, sp, TREE_CHECK_STACK_CAP, child);
+        } else {
+            sp--;
         }
     }
     return false;
@@ -1198,8 +1383,8 @@ static bool dump_scalar(emitter_t* e, const cyaml_node_t* n, int depth)
         }
         break;
     default:
-        style = can_be_plain(s, len) ? CYAML_PLAIN : can_be_single(s, len) ? CYAML_SINGLE
-                                                                           : CYAML_DOUBLE;
+        style = can_be_plain_ex(s, len, 0) ? CYAML_PLAIN : can_be_single(s, len) ? CYAML_SINGLE
+                                                                                 : CYAML_DOUBLE;
         break;
     }
 
@@ -1227,9 +1412,10 @@ static bool dump_scalar(emitter_t* e, const cyaml_node_t* n, int depth)
 }
 
 //! Emit anchor with trailing space (&name )
+//! Skips ALIAS nodes since their anchor field is a reference, not a definition
 static bool dump_anchor(emitter_t* e, const cyaml_node_t* n)
 {
-    if (n->anchor.len == 0)
+    if (!n || n->type == CYAML_ALIAS || n->anchor.len == 0)
         return true;
     EMIT(e, '&');
     EMIT_N(e, cyaml_src(e->doc) + n->anchor.off, n->anchor.len);
@@ -1395,325 +1581,6 @@ static bool key_needs_explicit(emitter_t* e, const cyaml_node_t* key)
     return false;
 }
 
-static bool dump_block_map(emitter_t* e, const cyaml_node_t* n, int depth);
-static bool dump_block_seq_from(emitter_t* e, const cyaml_node_t* n, int depth, uint32_t start);
-
-//! Emit a seq item inline, handling nested collections that need explicit keys
-static bool emit_seq_item_inline(emitter_t* e, const cyaml_node_t* item, int depth)
-{
-    EMIT_S(e, "- ");
-
-    if (item && item->type == CYAML_SEQ && item->seq.count > 0 && item->anchor.len == 0 && item->tag.len == 0) {
-        cyaml_node_t* first = item->seq.items[0];
-        if (first && first->type == CYAML_MAP && first->map.count > 0 && key_needs_explicit(e, first->map.pairs[0].key)) {
-            EMIT_S(e, "- ? ");
-            cyaml_node_t* k = first->map.pairs[0].key;
-            if (k->type == CYAML_SEQ && k->seq.count > 0) {
-                if (!emit_seq_item_inline(e, k->seq.items[0], depth + 2))
-                    return false;
-                for (uint32_t j = 1; j < k->seq.count; j++) {
-                    EMIT(e, C_LF);
-                    INDENT(e, depth + 4);
-                    if (!emit_seq_item_inline(e, k->seq.items[j], depth + 4))
-                        return false;
-                }
-            } else {
-                if (!emit_seq_item_inline(e, k, depth + 2))
-                    return false;
-            }
-            EMIT(e, C_LF);
-            INDENT(e, depth + 2);
-            EMIT_S(e, ": ");
-            cyaml_node_t* v = first->map.pairs[0].val;
-            if (!is_empty_value(v)) {
-                DNODE(e, v, depth + 2);
-            }
-            for (uint32_t j = 1; j < first->map.count; j++) {
-                EMIT(e, C_LF);
-                INDENT(e, depth + 2);
-                DNODE(e, first->map.pairs[j].key, depth + 2);
-                EMIT_S(e, ": ");
-                DNODE(e, first->map.pairs[j].val, depth + 2);
-            }
-            if (item->seq.count > 1) {
-                if (!dump_block_seq_from(e, item, depth + 1, 1))
-                    return false;
-            }
-            return true;
-        }
-        if (!emit_seq_item_inline(e, first, depth + 2))
-            return false;
-        if (item->seq.count > 1) {
-            if (!dump_block_seq_from(e, item, depth + 2, 1))
-                return false;
-        }
-        return true;
-    }
-
-    if (item && item->type == CYAML_MAP && item->map.count > 0 && item->anchor.len == 0 && item->tag.len == 0 && key_needs_explicit(e, item->map.pairs[0].key)) {
-        EMIT_S(e, "? ");
-        cyaml_node_t* k = item->map.pairs[0].key;
-        if (k->type == CYAML_SEQ && k->seq.count > 0) {
-            if (!emit_seq_item_inline(e, k->seq.items[0], depth + 2))
-                return false;
-            for (uint32_t j = 1; j < k->seq.count; j++) {
-                EMIT(e, C_LF);
-                INDENT(e, depth + 2);
-                if (!emit_seq_item_inline(e, k->seq.items[j], depth + 2))
-                    return false;
-            }
-        } else {
-            DNODE(e, k, depth + 2);
-        }
-        EMIT(e, C_LF);
-        INDENT(e, depth);
-        EMIT_S(e, ": ");
-        cyaml_node_t* v = item->map.pairs[0].val;
-        if (!is_empty_value(v)) {
-            DNODE(e, v, depth + 1);
-        }
-        return true;
-    }
-
-    if (!item) {
-        EMIT_S(e, S_NULL);
-        return true;
-    }
-    if (item->type == CYAML_SCALAR)
-        return dump_scalar(e, item, depth);
-    DNODE(e, item, depth);
-    return true;
-}
-
-static bool dump_block_seq(emitter_t* e, const cyaml_node_t* n, int depth)
-{
-    return dump_block_seq_from(e, n, depth, 0);
-}
-
-static bool dump_block_seq_from(emitter_t* e, const cyaml_node_t* n, int depth, uint32_t start)
-{
-    for (uint32_t i = start; i < n->seq.count; i++) {
-        bool has_trailing_nl = (EMIT_LAST(e) == C_LF && EMIT_PREV(e) == C_LF);
-        if (!has_trailing_nl && (i > start || depth > 0))
-            EMIT(e, C_LF);
-        INDENT(e, depth);
-
-        cyaml_node_t* item = n->seq.items[i];
-
-        if (item && item->type == CYAML_MAP && item->map.count > 0) {
-            bool item_has_props = item->anchor.len > 0 || item->tag.len > 0;
-            if (item_has_props) {
-                EMIT_S(e, "- ");
-                DUMP_PROPS(e, item);
-                EMIT_TRIM_SPACE(e);
-                if (!dump_block_map(e, item, depth + 1))
-                    return false;
-                continue;
-            }
-            cyaml_node_t* first_key = item->map.pairs[0].key;
-            cyaml_node_t* first_val = item->map.pairs[0].val;
-
-            if (key_needs_explicit(e, first_key)) {
-                EMIT_S(e, "- ? ");
-                if (first_key->type == CYAML_SEQ && first_key->seq.count > 0) {
-                    if (!emit_seq_item_inline(e, first_key->seq.items[0], depth + 2))
-                        return false;
-                    for (uint32_t j = 1; j < first_key->seq.count; j++) {
-                        EMIT(e, C_LF);
-                        INDENT(e, depth + 2);
-                        if (!emit_seq_item_inline(e, first_key->seq.items[j], depth + 2))
-                            return false;
-                    }
-                } else if (first_key->type == CYAML_MAP && first_key->map.count > 0) {
-                    cyaml_node_t* k0 = first_key->map.pairs[0].key;
-                    cyaml_node_t* v0 = first_key->map.pairs[0].val;
-                    if (!is_empty_key(k0)) {
-                        DNODE(e, k0, depth);
-                    }
-                    EMIT_S(e, ": ");
-                    DNODE(e, v0, depth);
-                    for (uint32_t j = 1; j < first_key->map.count; j++) {
-                        EMIT(e, C_LF);
-                        INDENT(e, depth + 2);
-                        cyaml_node_t* kj = first_key->map.pairs[j].key;
-                        if (!is_empty_key(kj)) {
-                            DNODE(e, kj, depth);
-                        }
-                        EMIT_S(e, ": ");
-                        DNODE(e, first_key->map.pairs[j].val, depth);
-                    }
-                } else {
-                    DNODE(e, first_key, depth + 1);
-                }
-                EMIT(e, C_LF);
-                INDENT(e, depth + 1);
-                EMIT(e, ':');
-                if (!is_empty_value(first_val)) {
-                    EMIT(e, C_SP);
-                    DNODE(e, first_val, depth + 2);
-                }
-                for (uint32_t j = 1; j < item->map.count; j++) {
-                    EMIT(e, C_LF);
-                    INDENT(e, depth + 1);
-                    cyaml_node_t* k = item->map.pairs[j].key;
-                    cyaml_node_t* v = item->map.pairs[j].val;
-                    if (key_needs_explicit(e, k)) {
-                        EMIT_S(e, "? ");
-                        DNODE(e, k, depth + 1);
-                        EMIT(e, C_LF);
-                        INDENT(e, depth + 1);
-                        EMIT(e, ':');
-                    } else {
-                        DNODE(e, k, depth + 1);
-                        EMIT(e, ':');
-                    }
-                    if (!is_empty_value(v)) {
-                        EMIT(e, C_SP);
-                        DNODE(e, v, depth + 2);
-                    }
-                }
-                continue;
-            }
-
-            EMIT_S(e, "- ");
-            DNODE(e, first_key, depth);
-            if (key_needs_space(first_key)) {
-                EMIT_S(e, " :");
-            } else {
-                EMIT(e, ':');
-            }
-            if (is_empty_value(first_val)) {
-                if (first_val && (first_val->anchor.len > 0 || first_val->tag.len > 0)) {
-                    EMIT(e, C_SP);
-                    DUMP_PROPS(e, first_val);
-                    EMIT_TRIM_SPACE(e);
-                }
-            } else if (first_val->type == CYAML_SEQ || first_val->type == CYAML_MAP) {
-                DNODE(e, first_val, depth + 1);
-            } else {
-                EMIT(e, C_SP);
-                DNODE(e, first_val, depth + 2);
-            }
-            for (uint32_t j = 1; j < item->map.count; j++) {
-                EMIT(e, C_LF);
-                INDENT(e, depth + 1);
-                cyaml_node_t* key = item->map.pairs[j].key;
-                DNODE(e, key, depth + 1);
-                if (key && key->type == CYAML_ALIAS) {
-                    EMIT_S(e, " :");
-                } else {
-                    EMIT(e, ':');
-                }
-                cyaml_node_t* val = item->map.pairs[j].val;
-                if (is_empty_value(val)) {
-                    if (val && (val->anchor.len > 0 || val->tag.len > 0)) {
-                        EMIT(e, C_SP);
-                        DUMP_PROPS(e, val);
-                        EMIT_TRIM_SPACE(e);
-                    }
-                } else if (val->type == CYAML_SEQ || val->type == CYAML_MAP) {
-                    DNODE(e, val, depth + 2);
-                } else {
-                    EMIT(e, C_SP);
-                    DNODE(e, val, depth + 2);
-                }
-            }
-        }
-        // Compact nested sequences: - - item
-        else if (item && item->type == CYAML_SEQ && item->seq.count > 0) {
-            bool item_has_props = item->anchor.len > 0 || item->tag.len > 0;
-            if (item_has_props) {
-                EMIT_S(e, "- ");
-                DUMP_PROPS(e, item);
-                EMIT_TRIM_SPACE(e);
-                if (!dump_block_seq(e, item, depth + 1))
-                    return false;
-                continue;
-            }
-            EMIT_S(e, "- ");
-            cyaml_node_t* cur = item;
-            int extra_depth = 0;
-            while (cur->seq.count == 1 && cur->seq.items[0] && cur->seq.items[0]->type == CYAML_SEQ && cur->seq.items[0]->seq.count > 0 && cur->seq.items[0]->anchor.len == 0 && cur->seq.items[0]->tag.len == 0) {
-                EMIT_S(e, "- ");
-                cur = cur->seq.items[0];
-                extra_depth++;
-            }
-            if (cur->seq.count > 0) {
-                cyaml_node_t* first = cur->seq.items[0];
-                if (first && first->type == CYAML_MAP && first->map.count > 0 && first->anchor.len == 0 && first->tag.len == 0) {
-                    EMIT_S(e, "- ");
-                    cyaml_node_t* k = first->map.pairs[0].key;
-                    cyaml_node_t* v = first->map.pairs[0].val;
-                    if (key_needs_explicit(e, k)) {
-                        EMIT_S(e, "? ");
-                        if (k->type == CYAML_MAP && k->map.count > 0) {
-                            cyaml_node_t* k0 = k->map.pairs[0].key;
-                            cyaml_node_t* v0 = k->map.pairs[0].val;
-                            DNODE(e, k0, depth);
-                            EMIT_S(e, ": ");
-                            DNODE(e, v0, depth);
-                        } else {
-                            DNODE(e, k, depth + extra_depth + 1);
-                        }
-                        EMIT(e, C_LF);
-                        INDENT(e, depth + extra_depth + 2);
-                        EMIT(e, ':');
-                        if (!is_empty_value(v)) {
-                            EMIT(e, C_SP);
-                            DNODE(e, v, depth + extra_depth + 1);
-                        }
-                    } else {
-                        if (!is_empty_key(k)) {
-                            DNODE(e, k, depth);
-                            if (key_needs_space(k)) {
-                                EMIT_S(e, " :");
-                            } else {
-                                EMIT(e, ':');
-                            }
-                        } else {
-                            EMIT(e, ':');
-                        }
-                        if (!is_empty_value(v)) {
-                            EMIT(e, C_SP);
-                            DNODE(e, v, depth + extra_depth + 2);
-                        }
-                    }
-                    for (uint32_t m = 1; m < first->map.count; m++) {
-                        EMIT(e, C_LF);
-                        INDENT(e, depth + extra_depth + 1);
-                        DNODE(e, first->map.pairs[m].key, depth);
-                        EMIT_S(e, ": ");
-                        DNODE(e, first->map.pairs[m].val, depth + extra_depth + 2);
-                    }
-                } else {
-                    EMIT_S(e, "- ");
-                    DNODE(e, first, depth + extra_depth + 1);
-                }
-                for (uint32_t j = 1; j < cur->seq.count; j++) {
-                    EMIT(e, C_LF);
-                    INDENT(e, depth + extra_depth + 1);
-                    EMIT_S(e, "- ");
-                    DNODE(e, cur->seq.items[j], depth + extra_depth + 2);
-                }
-            }
-        }
-        // Empty/null item: emit "-" with anchor/tag if present
-        else if (!item || item->type == CYAML_NULL || item->type == CYAML_NONE || (item->type == CYAML_SCALAR && item->span.len == 0 && !((item->style == CYAML_LITERAL || item->style == CYAML_FOLDED) && item->chomp == CYAML_KEEP))) {
-            if (item && (item->anchor.len > 0 || item->tag.len > 0)) {
-                EMIT_S(e, "- ");
-                DUMP_PROPS(e, item);
-                EMIT_TRIM_SPACE(e);
-            } else {
-                EMIT(e, '-');
-            }
-        } else {
-            EMIT_S(e, "- ");
-            DNODE(e, item, depth + 1);
-        }
-    }
-    return true;
-}
-
 //! Check if key is empty/null (no content, no anchor, no tag)
 static bool is_empty_key(const cyaml_node_t* key)
 {
@@ -1726,229 +1593,1301 @@ static bool is_empty_key(const cyaml_node_t* key)
     return false;
 }
 
-//! Dump block mapping
-static bool dump_block_map(emitter_t* e, const cyaml_node_t* n, int depth)
+//! Dump frame states for iterative traversal
+typedef enum {
+    DUMPF_VALUE,
+    DUMPF_SEQ,
+    DUMPF_SEQ_MAP_REST,
+    DUMPF_SEQ_KEY_REST,
+    DUMPF_MAP,
+    DUMPF_MAP_VAL,
+    DUMPF_DASH_ITEM, // Emit "- " then process item inline
+    DUMPF_DASH_SEQ_MAP, // After inline key: handle rest of key seq, then colon+value, rest of map, rest of outer seq
+    DUMPF_DASH_SEQ, // After inline first: handle rest of seq items
+    DUMPF_DASH_MAP, // After inline map key: handle colon+value
+    DUMPF_SEQ_KEYSEQ // Handle key SEQ iteration for explicit key in SEQ context (node=MAP)
+} dump_state_t;
+
+//! Stack frame for iterative dump
+typedef struct {
+    const cyaml_node_t* node;
+    uint32_t idx;
+    uint32_t sub_idx;
+    uint32_t start_idx;
+    dump_state_t state;
+    int depth;
+    int extra_depth;
+    uint8_t flags;
+} dump_frame_t;
+
+#define DUMPF_SKIP_PROPS 0x01
+#define DUMPF_FROM_FLOW 0x02
+#define DUMPF_INLINE 0x04
+
+#define DUMP_PUSH(stk, cnt, cap, nd, st, dp, on_fail)                                 \
+    do {                                                                              \
+        if ((cnt) >= (cap)) {                                                         \
+            size_t new_cap = (cap) * 2;                                               \
+            dump_frame_t* tmp = realloc((stk), new_cap * sizeof(*(stk)));             \
+            if (!tmp) {                                                               \
+                on_fail;                                                              \
+            }                                                                         \
+            (stk) = tmp;                                                              \
+            (cap) = new_cap;                                                          \
+        }                                                                             \
+        (stk)[(cnt)] = (dump_frame_t) { .node = (nd), .state = (st), .depth = (dp) }; \
+        (cnt)++;                                                                      \
+    } while (0)
+
+#define DM_PUSH(nd, st, dp) \
+    DUMP_PUSH(stack, stack_count, stack_cap, nd, st, dp, { result = false; goto cleanup; })
+
+#define DM_FAIL()       \
+    do {                \
+        result = false; \
+        goto cleanup;   \
+    } while (0)
+
+static bool dump_node(emitter_t* e, const cyaml_node_t* root, int start_depth)
 {
-    for (uint32_t i = 0; i < n->map.count; i++) {
-        bool has_trailing_nl = (EMIT_LAST(e) == C_LF && EMIT_PREV(e) == C_LF);
-        if (!has_trailing_nl && (i > 0 || depth > 0))
-            EMIT(e, C_LF);
-        INDENT(e, depth);
+    if (!root || root->type == CYAML_NONE)
+        return emit_cstr(e, S_NULL);
 
-        cyaml_node_t* key = n->map.pairs[i].key;
-        cyaml_node_t* val = n->map.pairs[i].val;
+    dump_frame_t* stack = malloc(DUMP_STACK_INIT_CAP * sizeof(*stack));
+    if (!stack)
+        return false;
+    size_t stack_count = 0;
+    size_t stack_cap = DUMP_STACK_INIT_CAP;
+    bool result = true;
 
-        if (is_empty_key(key)) {
-            EMIT(e, ':');
-        } else {
+    DM_PUSH(root, DUMPF_VALUE, start_depth);
+
+    while (stack_count > 0) {
+        dump_frame_t* f = &stack[stack_count - 1];
+        const cyaml_node_t* n = f->node;
+
+        switch (f->state) {
+        case DUMPF_VALUE: {
+            stack_count--;
+            if (!n || n->type == CYAML_NONE) {
+                if (!emit_cstr(e, S_NULL))
+                    DM_FAIL();
+                break;
+            }
+            switch (n->type) {
+            case CYAML_NULL:
+                if (!dump_anchor(e, n))
+                    DM_FAIL();
+                if (n->tag.len > 0) {
+                    if (!emit_resolved_tag_raw(e, n))
+                        DM_FAIL();
+                    break;
+                }
+                if (n->anchor.len > 0) {
+                    EMIT_TRIM_SPACE(e);
+                    break;
+                }
+                if (!dump_tag(e, n))
+                    DM_FAIL();
+                if (!emit_cstr(e, S_NULL))
+                    DM_FAIL();
+                break;
+            case CYAML_SCALAR:
+                if (!dump_anchor(e, n))
+                    DM_FAIL();
+                if (n->tag.len > 0 && n->span.len == 0) {
+                    if (!emit_resolved_tag_raw(e, n))
+                        DM_FAIL();
+                    break;
+                }
+                if (!dump_tag(e, n))
+                    DM_FAIL();
+                if (!dump_scalar(e, n, f->depth))
+                    DM_FAIL();
+                break;
+            case CYAML_SEQ:
+                if (n->seq.count == 0) {
+                    if (!dump_anchor(e, n))
+                        DM_FAIL();
+                    if (!dump_tag(e, n))
+                        DM_FAIL();
+                    if (!emit_cstr(e, "[]"))
+                        DM_FAIL();
+                    break;
+                }
+                if (n->anchor.len > 0 || n->tag.len > 0) {
+                    if (!dump_anchor(e, n))
+                        DM_FAIL();
+                    if (!dump_tag(e, n))
+                        DM_FAIL();
+                    EMIT_TRIM_SPACE(e);
+                    if (!emit_char(e, C_LF))
+                        DM_FAIL();
+                }
+                DM_PUSH(n, DUMPF_SEQ, f->depth);
+                break;
+            case CYAML_MAP:
+                if (n->map.count == 0) {
+                    if (!dump_anchor(e, n))
+                        DM_FAIL();
+                    if (!dump_tag(e, n))
+                        DM_FAIL();
+                    if (!emit_cstr(e, "{}"))
+                        DM_FAIL();
+                    break;
+                }
+                if (n->anchor.len > 0 || n->tag.len > 0) {
+                    if (!dump_anchor(e, n))
+                        DM_FAIL();
+                    if (!dump_tag(e, n))
+                        DM_FAIL();
+                    EMIT_TRIM_SPACE(e);
+                    if (!emit_char(e, C_LF))
+                        DM_FAIL();
+                }
+                DM_PUSH(n, DUMPF_MAP, f->depth);
+                break;
+            case CYAML_ALIAS:
+                if (!emit_char(e, '*'))
+                    DM_FAIL();
+                if (!emit_str(e, cyaml_src(e->doc) + n->anchor.off, n->anchor.len))
+                    DM_FAIL();
+                break;
+            default:
+                break;
+            }
+            break;
+        }
+
+        case DUMPF_SEQ: {
+            uint32_t start = f->start_idx;
+            if (f->idx >= n->seq.count) {
+                stack_count--;
+                break;
+            }
+            bool is_after_dash = (EMIT_LAST(e) == C_SP && EMIT_PREV(e) == '-');
+            if (!is_after_dash) {
+                bool has_trailing_nl = (EMIT_LAST(e) == C_LF && EMIT_PREV(e) == C_LF);
+                if (!has_trailing_nl && (f->idx > start || f->depth > 0))
+                    if (!emit_char(e, C_LF))
+                        DM_FAIL();
+                if (!emit_indent(e, f->depth))
+                    DM_FAIL();
+            }
+
+            cyaml_node_t* item = n->seq.items[f->idx];
+
+            if (item && item->type == CYAML_MAP && item->map.count > 0) {
+                bool item_has_props = item->anchor.len > 0 || item->tag.len > 0;
+                if (item_has_props) {
+                    if (!emit_cstr(e, "- "))
+                        DM_FAIL();
+                    if (!dump_anchor(e, item))
+                        DM_FAIL();
+                    if (!dump_tag(e, item))
+                        DM_FAIL();
+                    EMIT_TRIM_SPACE(e);
+                    f->idx++;
+                    DM_PUSH(item, DUMPF_MAP, f->depth + 1);
+                    break;
+                }
+                cyaml_node_t* first_key = item->map.pairs[0].key;
+                cyaml_node_t* first_val = item->map.pairs[0].val;
+
+                if (key_needs_explicit(e, first_key)) {
+                    if (!emit_cstr(e, "- ? "))
+                        DM_FAIL();
+                    if (first_key->type == CYAML_SEQ && first_key->seq.count > 0) {
+                        // Push frame for key seq handling (node=MAP to access key and value)
+                        // Increment idx now so outer SEQ continues with next item when we return
+                        f->idx++;
+                        DM_PUSH(item, DUMPF_SEQ_KEYSEQ, f->depth + 1);
+                        stack[stack_count - 1].idx = 0; // key item index
+                        stack[stack_count - 1].sub_idx = 0; // phase tracking
+                        // Push first key item for inline emission
+                        DM_PUSH(first_key->seq.items[0], DUMPF_DASH_ITEM, f->depth + 2);
+                        break;
+                    } else if (first_key->type == CYAML_MAP && first_key->map.count > 0) {
+                        cyaml_node_t* k0 = first_key->map.pairs[0].key;
+                        cyaml_node_t* v0 = first_key->map.pairs[0].val;
+                        if (!is_empty_key(k0)) {
+                            if (!dump_node(e, k0, f->depth))
+                                DM_FAIL();
+                        }
+                        if (!emit_cstr(e, ": "))
+                            DM_FAIL();
+                        if (!dump_node(e, v0, f->depth))
+                            DM_FAIL();
+                        for (uint32_t j = 1; j < first_key->map.count; j++) {
+                            if (!emit_char(e, C_LF))
+                                DM_FAIL();
+                            if (!emit_indent(e, f->depth + 2))
+                                DM_FAIL();
+                            cyaml_node_t* kj = first_key->map.pairs[j].key;
+                            if (!is_empty_key(kj)) {
+                                if (!dump_node(e, kj, f->depth))
+                                    DM_FAIL();
+                            }
+                            if (!emit_cstr(e, ": "))
+                                DM_FAIL();
+                            if (!dump_node(e, first_key->map.pairs[j].val, f->depth))
+                                DM_FAIL();
+                        }
+                    } else {
+                        if (!dump_node(e, first_key, f->depth + 1))
+                            DM_FAIL();
+                    }
+                    if (!emit_char(e, C_LF))
+                        DM_FAIL();
+                    if (!emit_indent(e, f->depth + 1))
+                        DM_FAIL();
+                    if (!emit_char(e, ':'))
+                        DM_FAIL();
+                    if (!is_empty_value(first_val)) {
+                        if (!emit_char(e, C_SP))
+                            DM_FAIL();
+                        f->sub_idx = 1;
+                        f->state = DUMPF_SEQ_MAP_REST;
+                        DM_PUSH(first_val, DUMPF_VALUE, f->depth + 2);
+                        break;
+                    }
+                    f->sub_idx = 1;
+                    f->state = DUMPF_SEQ_MAP_REST;
+                    break;
+                }
+
+                if (!emit_cstr(e, "- "))
+                    DM_FAIL();
+                if (!dump_anchor(e, first_key))
+                    DM_FAIL();
+                if (!dump_tag(e, first_key))
+                    DM_FAIL();
+                if (first_key && first_key->type == CYAML_SCALAR) {
+                    if (!dump_scalar(e, first_key, f->depth))
+                        DM_FAIL();
+                } else if (first_key && first_key->type == CYAML_ALIAS) {
+                    if (!emit_char(e, '*'))
+                        DM_FAIL();
+                    if (!emit_str(e, cyaml_src(e->doc) + first_key->anchor.off, first_key->anchor.len))
+                        DM_FAIL();
+                } else if (first_key && first_key->type == CYAML_NULL && (first_key->anchor.len > 0 || first_key->tag.len > 0)) {
+                    EMIT_TRIM_SPACE(e);
+                }
+                if (key_needs_space(first_key)) {
+                    if (!emit_cstr(e, " :"))
+                        DM_FAIL();
+                } else {
+                    if (!emit_char(e, ':'))
+                        DM_FAIL();
+                }
+                if (is_empty_value(first_val)) {
+                    if (first_val && (first_val->anchor.len > 0 || first_val->tag.len > 0)) {
+                        if (!emit_char(e, C_SP))
+                            DM_FAIL();
+                        if (!dump_anchor(e, first_val))
+                            DM_FAIL();
+                        if (!dump_tag(e, first_val))
+                            DM_FAIL();
+                        EMIT_TRIM_SPACE(e);
+                    }
+                    f->sub_idx = 1;
+                    f->state = DUMPF_SEQ_MAP_REST;
+                    break;
+                }
+                if (first_val->type == CYAML_SEQ || first_val->type == CYAML_MAP) {
+                    f->sub_idx = 1;
+                    f->state = DUMPF_SEQ_MAP_REST;
+                    DM_PUSH(first_val, DUMPF_VALUE, f->depth + 1);
+                    break;
+                }
+                if (!emit_char(e, C_SP))
+                    DM_FAIL();
+                f->sub_idx = 1;
+                f->state = DUMPF_SEQ_MAP_REST;
+                DM_PUSH(first_val, DUMPF_VALUE, f->depth + 2);
+                break;
+            }
+
+            if (item && item->type == CYAML_SEQ && item->seq.count > 0) {
+                bool item_has_props = item->anchor.len > 0 || item->tag.len > 0;
+                if (item_has_props) {
+                    if (!emit_cstr(e, "- "))
+                        DM_FAIL();
+                    if (!dump_anchor(e, item))
+                        DM_FAIL();
+                    if (!dump_tag(e, item))
+                        DM_FAIL();
+                    EMIT_TRIM_SPACE(e);
+                    f->idx++;
+                    DM_PUSH(item, DUMPF_SEQ, f->depth + 1);
+                    break;
+                }
+                if (!emit_cstr(e, "- "))
+                    DM_FAIL();
+                cyaml_node_t* cur = item;
+                int extra_depth = 0;
+                while (cur->seq.count == 1 && cur->seq.items[0] && cur->seq.items[0]->type == CYAML_SEQ && cur->seq.items[0]->seq.count > 0 && cur->seq.items[0]->anchor.len == 0 && cur->seq.items[0]->tag.len == 0) {
+                    if (!emit_cstr(e, "- "))
+                        DM_FAIL();
+                    cur = cur->seq.items[0];
+                    extra_depth++;
+                }
+                f->extra_depth = extra_depth;
+                if (cur->seq.count > 0) {
+                    cyaml_node_t* first = cur->seq.items[0];
+                    if (first && first->type == CYAML_MAP && first->map.count > 0 && first->anchor.len == 0 && first->tag.len == 0) {
+                        if (!emit_cstr(e, "- "))
+                            DM_FAIL();
+                        cyaml_node_t* k = first->map.pairs[0].key;
+                        cyaml_node_t* v = first->map.pairs[0].val;
+                        if (key_needs_explicit(e, k)) {
+                            if (!emit_cstr(e, "? "))
+                                DM_FAIL();
+                            if (k->type == CYAML_MAP && k->map.count > 0) {
+                                cyaml_node_t* k0 = k->map.pairs[0].key;
+                                cyaml_node_t* v0 = k->map.pairs[0].val;
+                                if (k0 && k0->type == CYAML_SCALAR) {
+                                    if (!dump_anchor(e, k0))
+                                        DM_FAIL();
+                                    if (!dump_tag(e, k0))
+                                        DM_FAIL();
+                                    if (!dump_scalar(e, k0, f->depth))
+                                        DM_FAIL();
+                                }
+                                if (!emit_cstr(e, ": "))
+                                    DM_FAIL();
+                                if (v0 && v0->type == CYAML_SCALAR) {
+                                    if (!dump_anchor(e, v0))
+                                        DM_FAIL();
+                                    if (!dump_tag(e, v0))
+                                        DM_FAIL();
+                                    if (!dump_scalar(e, v0, f->depth))
+                                        DM_FAIL();
+                                }
+                            } else if (k->type == CYAML_SCALAR) {
+                                if (!dump_anchor(e, k))
+                                    DM_FAIL();
+                                if (!dump_tag(e, k))
+                                    DM_FAIL();
+                                if (!dump_scalar(e, k, f->depth + extra_depth + 1))
+                                    DM_FAIL();
+                            }
+                            if (!emit_char(e, C_LF))
+                                DM_FAIL();
+                            if (!emit_indent(e, f->depth + extra_depth + 2))
+                                DM_FAIL();
+                            if (!emit_char(e, ':'))
+                                DM_FAIL();
+                            if (!is_empty_value(v)) {
+                                if (!emit_char(e, C_SP))
+                                    DM_FAIL();
+                                f->idx++;
+                                if (cur->seq.count > 1) {
+                                    DM_PUSH(cur, DUMPF_SEQ, f->depth + extra_depth + 1);
+                                    stack[stack_count - 1].idx = 1;
+                                    stack[stack_count - 1].start_idx = 1;
+                                }
+                                DM_PUSH(v, DUMPF_VALUE, f->depth + extra_depth + 1);
+                                break;
+                            }
+                        } else {
+                            if (!is_empty_key(k)) {
+                                if (k->type == CYAML_SCALAR) {
+                                    if (!dump_anchor(e, k))
+                                        DM_FAIL();
+                                    if (!dump_tag(e, k))
+                                        DM_FAIL();
+                                    if (!dump_scalar(e, k, f->depth))
+                                        DM_FAIL();
+                                } else if (k->type == CYAML_ALIAS) {
+                                    if (!emit_char(e, '*'))
+                                        DM_FAIL();
+                                    if (!emit_str(e, cyaml_src(e->doc) + k->anchor.off, k->anchor.len))
+                                        DM_FAIL();
+                                }
+                                if (key_needs_space(k)) {
+                                    if (!emit_cstr(e, " :"))
+                                        DM_FAIL();
+                                } else {
+                                    if (!emit_char(e, ':'))
+                                        DM_FAIL();
+                                }
+                            } else {
+                                if (!emit_char(e, ':'))
+                                    DM_FAIL();
+                            }
+                            if (!is_empty_value(v)) {
+                                if (!emit_char(e, C_SP))
+                                    DM_FAIL();
+                                f->idx++;
+                                if (cur->seq.count > 1) {
+                                    DM_PUSH(cur, DUMPF_SEQ, f->depth + extra_depth + 1);
+                                    stack[stack_count - 1].idx = 1;
+                                    stack[stack_count - 1].start_idx = 1;
+                                }
+                                DM_PUSH(v, DUMPF_VALUE, f->depth + extra_depth + 2);
+                                break;
+                            }
+                        }
+                        f->idx++;
+                        if (cur->seq.count > 1) {
+                            DM_PUSH(cur, DUMPF_SEQ, f->depth + extra_depth + 1);
+                            stack[stack_count - 1].idx = 1;
+                            stack[stack_count - 1].start_idx = 1;
+                        }
+                        break;
+                    }
+                    if (!emit_cstr(e, "- "))
+                        DM_FAIL();
+                    f->idx++;
+                    if (cur->seq.count > 1) {
+                        DM_PUSH(cur, DUMPF_SEQ, f->depth + extra_depth + 1);
+                        stack[stack_count - 1].idx = 1;
+                        stack[stack_count - 1].start_idx = 1;
+                    }
+                    DM_PUSH(first, DUMPF_VALUE, f->depth + extra_depth + 1);
+                    break;
+                }
+                f->idx++;
+                break;
+            }
+
+            if (!item || item->type == CYAML_NULL || item->type == CYAML_NONE || (item->type == CYAML_SCALAR && item->span.len == 0 && !((item->style == CYAML_LITERAL || item->style == CYAML_FOLDED) && item->chomp == CYAML_KEEP))) {
+                if (item && (item->anchor.len > 0 || item->tag.len > 0)) {
+                    if (!emit_cstr(e, "- "))
+                        DM_FAIL();
+                    if (!dump_anchor(e, item))
+                        DM_FAIL();
+                    if (!dump_tag(e, item))
+                        DM_FAIL();
+                    EMIT_TRIM_SPACE(e);
+                } else {
+                    if (!emit_char(e, '-'))
+                        DM_FAIL();
+                }
+                f->idx++;
+                break;
+            }
+
+            if (!emit_cstr(e, "- "))
+                DM_FAIL();
+            f->idx++;
+            DM_PUSH(item, DUMPF_VALUE, f->depth + 1);
+            break;
+        }
+
+        case DUMPF_SEQ_MAP_REST: {
+            cyaml_node_t* item = n->seq.items[f->idx];
+            if (f->sub_idx >= item->map.count) {
+                f->idx++;
+                f->sub_idx = 0;
+                f->state = DUMPF_SEQ;
+                break;
+            }
+            if (!emit_char(e, C_LF))
+                DM_FAIL();
+            if (!emit_indent(e, f->depth + 1))
+                DM_FAIL();
+            cyaml_node_t* key = item->map.pairs[f->sub_idx].key;
+            cyaml_node_t* val = item->map.pairs[f->sub_idx].val;
+
+            if (key_needs_explicit(e, key)) {
+                if (!emit_cstr(e, "? "))
+                    DM_FAIL();
+                if (key->type == CYAML_SCALAR) {
+                    if (!dump_anchor(e, key))
+                        DM_FAIL();
+                    if (!dump_tag(e, key))
+                        DM_FAIL();
+                    if (!dump_scalar(e, key, f->depth + 1))
+                        DM_FAIL();
+                }
+                if (!emit_char(e, C_LF))
+                    DM_FAIL();
+                if (!emit_indent(e, f->depth + 1))
+                    DM_FAIL();
+                if (!emit_char(e, ':'))
+                    DM_FAIL();
+            } else {
+                if (!dump_anchor(e, key))
+                    DM_FAIL();
+                if (!dump_tag(e, key))
+                    DM_FAIL();
+                if (key && key->type == CYAML_SCALAR)
+                    if (!dump_scalar(e, key, f->depth + 1))
+                        DM_FAIL();
+                if (key && key->type == CYAML_ALIAS) {
+                    if (!emit_char(e, '*'))
+                        DM_FAIL();
+                    if (!emit_str(e, cyaml_src(e->doc) + key->anchor.off, key->anchor.len))
+                        DM_FAIL();
+                }
+                if (key && key->type == CYAML_ALIAS) {
+                    if (!emit_cstr(e, " :"))
+                        DM_FAIL();
+                } else {
+                    if (!emit_char(e, ':'))
+                        DM_FAIL();
+                }
+            }
+            if (is_empty_value(val)) {
+                if (val && (val->anchor.len > 0 || val->tag.len > 0)) {
+                    if (!emit_char(e, C_SP))
+                        DM_FAIL();
+                    if (!dump_anchor(e, val))
+                        DM_FAIL();
+                    if (!dump_tag(e, val))
+                        DM_FAIL();
+                    EMIT_TRIM_SPACE(e);
+                }
+                f->sub_idx++;
+                break;
+            }
+            if (val->type == CYAML_SEQ || val->type == CYAML_MAP) {
+                f->sub_idx++;
+                DM_PUSH(val, DUMPF_VALUE, f->depth + 2);
+                break;
+            }
+            if (!emit_char(e, C_SP))
+                DM_FAIL();
+            f->sub_idx++;
+            DM_PUSH(val, DUMPF_VALUE, f->depth + 2);
+            break;
+        }
+
+        case DUMPF_SEQ_KEY_REST: {
+            cyaml_node_t* item = n->seq.items[f->idx];
+            cyaml_node_t* first_key = item->map.pairs[0].key;
+            cyaml_node_t* first_val = item->map.pairs[0].val;
+            uint32_t j = f->sub_idx;
+            while (j < first_key->seq.count) {
+                if (!emit_char(e, C_LF))
+                    DM_FAIL();
+                if (!emit_indent(e, f->depth + 2))
+                    DM_FAIL();
+                if (!emit_cstr(e, "- "))
+                    DM_FAIL();
+                cyaml_node_t* sitem = first_key->seq.items[j];
+                if (!sitem) {
+                    if (!emit_cstr(e, S_NULL))
+                        DM_FAIL();
+                } else if (sitem->type == CYAML_SCALAR) {
+                    if (!dump_scalar(e, sitem, f->depth + 2))
+                        DM_FAIL();
+                } else if (sitem->type == CYAML_ALIAS) {
+                    if (!emit_char(e, '*'))
+                        DM_FAIL();
+                    if (!emit_str(e, cyaml_src(e->doc) + sitem->anchor.off, sitem->anchor.len))
+                        DM_FAIL();
+                } else if (sitem->type == CYAML_SEQ || sitem->type == CYAML_MAP) {
+                    f->sub_idx = j + 1;
+                    DM_PUSH(sitem, DUMPF_VALUE, f->depth + 2);
+                    break;
+                } else {
+                    if (!dump_anchor(e, sitem))
+                        DM_FAIL();
+                    if (!dump_tag(e, sitem))
+                        DM_FAIL();
+                }
+                j++;
+            }
+            if (j >= first_key->seq.count) {
+                if (!emit_char(e, C_LF))
+                    DM_FAIL();
+                if (!emit_indent(e, f->depth + 1))
+                    DM_FAIL();
+                if (!emit_char(e, ':'))
+                    DM_FAIL();
+                if (!is_empty_value(first_val)) {
+                    if (!emit_char(e, C_SP))
+                        DM_FAIL();
+                    f->sub_idx = 1;
+                    f->state = DUMPF_SEQ_MAP_REST;
+                    DM_PUSH(first_val, DUMPF_VALUE, f->depth + 2);
+                    break;
+                }
+                f->sub_idx = 1;
+                f->state = DUMPF_SEQ_MAP_REST;
+            }
+            break;
+        }
+
+        case DUMPF_MAP: {
+            if (f->idx >= n->map.count) {
+                stack_count--;
+                break;
+            }
+            bool has_trailing_nl = (EMIT_LAST(e) == C_LF && EMIT_PREV(e) == C_LF);
+            if (!has_trailing_nl && (f->idx > 0 || f->depth > 0))
+                if (!emit_char(e, C_LF))
+                    DM_FAIL();
+            if (!emit_indent(e, f->depth))
+                DM_FAIL();
+
+            cyaml_node_t* key = n->map.pairs[f->idx].key;
+            cyaml_node_t* val = n->map.pairs[f->idx].val;
+
+            if (is_empty_key(key)) {
+                if (!emit_char(e, ':'))
+                    DM_FAIL();
+                f->state = DUMPF_MAP_VAL;
+                break;
+            }
+
             bool explicit_key = key_needs_explicit(e, key);
 
             if (explicit_key) {
-                EMIT_S(e, "? ");
+                if (!emit_cstr(e, "? "))
+                    DM_FAIL();
                 if (key->type == CYAML_MAP && key->map.count > 0) {
-                    cyaml_node_t* k0 = key->map.pairs[0].key;
-                    cyaml_node_t* v0 = key->map.pairs[0].val;
-                    if (!is_empty_key(k0)) {
-                        DNODE(e, k0, depth);
-                    }
-                    EMIT_S(e, ": ");
-                    DNODE(e, v0, depth);
-                    for (uint32_t j = 1; j < key->map.count; j++) {
-                        EMIT(e, C_LF);
-                        INDENT(e, depth + 1);
+                    for (uint32_t j = 0; j < key->map.count; j++) {
+                        if (j > 0) {
+                            if (!emit_char(e, C_LF))
+                                DM_FAIL();
+                            if (!emit_indent(e, f->depth + 1))
+                                DM_FAIL();
+                        }
                         cyaml_node_t* kj = key->map.pairs[j].key;
                         if (!is_empty_key(kj)) {
-                            DNODE(e, kj, depth);
+                            if (!dump_anchor(e, kj))
+                                DM_FAIL();
+                            if (!dump_tag(e, kj))
+                                DM_FAIL();
+                            if (kj->type == CYAML_SCALAR) {
+                                if (!dump_scalar(e, kj, f->depth))
+                                    DM_FAIL();
+                            } else if (kj->type == CYAML_SEQ && kj->seq.count == 0) {
+                                if (!emit_cstr(e, "[]"))
+                                    DM_FAIL();
+                            } else if (kj->type == CYAML_MAP && kj->map.count == 0) {
+                                if (!emit_cstr(e, "{}"))
+                                    DM_FAIL();
+                            }
                         }
-                        EMIT_S(e, ": ");
-                        DNODE(e, key->map.pairs[j].val, depth);
+                        if (!emit_cstr(e, ": "))
+                            DM_FAIL();
+                        cyaml_node_t* vj = key->map.pairs[j].val;
+                        if (vj) {
+                            if (!dump_anchor(e, vj))
+                                DM_FAIL();
+                            if (!dump_tag(e, vj))
+                                DM_FAIL();
+                            if (vj->type == CYAML_SCALAR) {
+                                if (!dump_scalar(e, vj, f->depth))
+                                    DM_FAIL();
+                            } else if (vj->type == CYAML_SEQ && vj->seq.count == 0) {
+                                if (!emit_cstr(e, "[]"))
+                                    DM_FAIL();
+                            } else if (vj->type == CYAML_MAP && vj->map.count == 0) {
+                                if (!emit_cstr(e, "{}"))
+                                    DM_FAIL();
+                            }
+                        }
                     }
                 } else if (key->type == CYAML_SEQ && key->seq.count > 0) {
                     bool key_has_props = key->anchor.len > 0 || key->tag.len > 0;
                     if (key_has_props) {
-                        DUMP_PROPS(e, key);
+                        if (!dump_anchor(e, key))
+                            DM_FAIL();
+                        if (!dump_tag(e, key))
+                            DM_FAIL();
                         EMIT_TRIM_SPACE(e);
                         for (uint32_t j = 0; j < key->seq.count; j++) {
-                            EMIT(e, C_LF);
-                            INDENT(e, depth);
-                            EMIT_S(e, "- ");
-                            DNODE(e, key->seq.items[j], depth);
+                            if (!emit_char(e, C_LF))
+                                DM_FAIL();
+                            if (!emit_indent(e, f->depth))
+                                DM_FAIL();
+                            if (!emit_cstr(e, "- "))
+                                DM_FAIL();
+                            cyaml_node_t* sitem = key->seq.items[j];
+                            if (sitem && sitem->type == CYAML_SCALAR) {
+                                if (!dump_anchor(e, sitem))
+                                    DM_FAIL();
+                                if (!dump_tag(e, sitem))
+                                    DM_FAIL();
+                                if (!dump_scalar(e, sitem, f->depth))
+                                    DM_FAIL();
+                            }
                         }
                     } else {
-                        EMIT_S(e, "- ");
-                        DNODE(e, key->seq.items[0], depth);
+                        if (!emit_cstr(e, "- "))
+                            DM_FAIL();
+                        cyaml_node_t* sitem = key->seq.items[0];
+                        if (sitem && sitem->type == CYAML_SCALAR) {
+                            if (!dump_anchor(e, sitem))
+                                DM_FAIL();
+                            if (!dump_tag(e, sitem))
+                                DM_FAIL();
+                            if (!dump_scalar(e, sitem, f->depth))
+                                DM_FAIL();
+                        }
                         for (uint32_t j = 1; j < key->seq.count; j++) {
-                            EMIT(e, C_LF);
-                            INDENT(e, depth + 1);
-                            EMIT_S(e, "- ");
-                            DNODE(e, key->seq.items[j], depth);
+                            if (!emit_char(e, C_LF))
+                                DM_FAIL();
+                            if (!emit_indent(e, f->depth + 1))
+                                DM_FAIL();
+                            if (!emit_cstr(e, "- "))
+                                DM_FAIL();
+                            sitem = key->seq.items[j];
+                            if (sitem && sitem->type == CYAML_SCALAR) {
+                                if (!dump_anchor(e, sitem))
+                                    DM_FAIL();
+                                if (!dump_tag(e, sitem))
+                                    DM_FAIL();
+                                if (!dump_scalar(e, sitem, f->depth))
+                                    DM_FAIL();
+                            }
                         }
                     }
                 } else {
                     int key_depth = (key->type == CYAML_SCALAR && (key->style == CYAML_LITERAL || key->style == CYAML_FOLDED))
-                        ? depth + 1
-                        : depth;
-                    DNODE(e, key, key_depth);
+                        ? f->depth + 1
+                        : f->depth;
+                    if (!dump_anchor(e, key))
+                        DM_FAIL();
+                    if (!dump_tag(e, key))
+                        DM_FAIL();
+                    if (key->type == CYAML_SCALAR)
+                        if (!dump_scalar(e, key, key_depth))
+                            DM_FAIL();
                 }
-                EMIT(e, C_LF);
-                INDENT(e, depth);
+                if (!emit_char(e, C_LF))
+                    DM_FAIL();
+                if (!emit_indent(e, f->depth))
+                    DM_FAIL();
+
                 if (val && val->type == CYAML_MAP && val->map.count > 0 && !is_empty_value(val)) {
-                    EMIT_S(e, ": ");
-                    cyaml_node_t* vk0 = val->map.pairs[0].key;
-                    cyaml_node_t* vv0 = val->map.pairs[0].val;
-                    DNODE(e, vk0, depth);
-                    EMIT_S(e, ": ");
-                    DNODE(e, vv0, depth);
-                    for (uint32_t j = 1; j < val->map.count; j++) {
-                        EMIT(e, C_LF);
-                        INDENT(e, depth + 1);
-                        DNODE(e, val->map.pairs[j].key, depth);
-                        EMIT_S(e, ": ");
-                        DNODE(e, val->map.pairs[j].val, depth);
+                    if (!emit_cstr(e, ": "))
+                        DM_FAIL();
+                    for (uint32_t j = 0; j < val->map.count; j++) {
+                        if (j > 0) {
+                            if (!emit_char(e, C_LF))
+                                DM_FAIL();
+                            if (!emit_indent(e, f->depth + 1))
+                                DM_FAIL();
+                        }
+                        cyaml_node_t* vkj = val->map.pairs[j].key;
+                        if (vkj) {
+                            if (!dump_anchor(e, vkj))
+                                DM_FAIL();
+                            if (!dump_tag(e, vkj))
+                                DM_FAIL();
+                            if (vkj->type == CYAML_SCALAR)
+                                if (!dump_scalar(e, vkj, f->depth))
+                                    DM_FAIL();
+                        }
+                        if (!emit_cstr(e, ": "))
+                            DM_FAIL();
+                        cyaml_node_t* vvj = val->map.pairs[j].val;
+                        if (vvj) {
+                            if (!dump_anchor(e, vvj))
+                                DM_FAIL();
+                            if (!dump_tag(e, vvj))
+                                DM_FAIL();
+                            if (vvj->type == CYAML_SCALAR)
+                                if (!dump_scalar(e, vvj, f->depth))
+                                    DM_FAIL();
+                        }
                     }
-                    continue;
+                    f->idx++;
+                    break;
                 }
                 if (val && val->type == CYAML_SEQ && val->seq.count > 0 && !is_empty_value(val)) {
-                    EMIT_S(e, ": - ");
-                    DNODE(e, val->seq.items[0], depth);
-                    for (uint32_t j = 1; j < val->seq.count; j++) {
-                        EMIT(e, C_LF);
-                        INDENT(e, depth + 1);
-                        EMIT_S(e, "- ");
-                        DNODE(e, val->seq.items[j], depth);
+                    if (!emit_cstr(e, ": - "))
+                        DM_FAIL();
+                    cyaml_node_t* sitem = val->seq.items[0];
+                    if (sitem) {
+                        if (!dump_anchor(e, sitem))
+                            DM_FAIL();
+                        if (!dump_tag(e, sitem))
+                            DM_FAIL();
+                        if (sitem->type == CYAML_SCALAR)
+                            if (!dump_scalar(e, sitem, f->depth))
+                                DM_FAIL();
                     }
-                    continue;
+                    for (uint32_t j = 1; j < val->seq.count; j++) {
+                        if (!emit_char(e, C_LF))
+                            DM_FAIL();
+                        if (!emit_indent(e, f->depth + 1))
+                            DM_FAIL();
+                        if (!emit_cstr(e, "- "))
+                            DM_FAIL();
+                        sitem = val->seq.items[j];
+                        if (sitem) {
+                            if (!dump_anchor(e, sitem))
+                                DM_FAIL();
+                            if (!dump_tag(e, sitem))
+                                DM_FAIL();
+                            if (sitem->type == CYAML_SCALAR)
+                                if (!dump_scalar(e, sitem, f->depth))
+                                    DM_FAIL();
+                        }
+                    }
+                    f->idx++;
+                    break;
                 }
-                EMIT_S(e, ":");
+                if (!emit_char(e, ':'))
+                    DM_FAIL();
+                f->state = DUMPF_MAP_VAL;
+                break;
+            }
+
+            if (!dump_anchor(e, key))
+                DM_FAIL();
+            if (!dump_tag(e, key))
+                DM_FAIL();
+            if (key->type == CYAML_SCALAR) {
+                if (!dump_scalar(e, key, f->depth))
+                    DM_FAIL();
+            } else if (key->type == CYAML_ALIAS) {
+                if (!emit_char(e, '*'))
+                    DM_FAIL();
+                if (!emit_str(e, cyaml_src(e->doc) + key->anchor.off, key->anchor.len))
+                    DM_FAIL();
+            } else if (key->type == CYAML_NULL && (key->anchor.len > 0 || key->tag.len > 0)) {
+                EMIT_TRIM_SPACE(e);
+            }
+            if (key_needs_space(key)) {
+                if (!emit_cstr(e, " :"))
+                    DM_FAIL();
             } else {
-                DNODE(e, key, depth);
-                if (key_needs_space(key)) {
-                    EMIT_S(e, " :");
+                if (!emit_char(e, ':'))
+                    DM_FAIL();
+            }
+            f->state = DUMPF_MAP_VAL;
+            break;
+        }
+
+        case DUMPF_MAP_VAL: {
+            cyaml_node_t* key = n->map.pairs[f->idx].key;
+            cyaml_node_t* val = n->map.pairs[f->idx].val;
+            bool val_has_props = val && (val->anchor.len > 0 || val->tag.len > 0);
+            bool explicit_key = !is_empty_key(key) && key_needs_explicit(e, key);
+            bool from_flow = (n->style == (cyaml_style_t)CYAML_FLOW);
+
+            if (is_empty_value(val)) {
+                if (val_has_props) {
+                    if (!emit_char(e, C_SP))
+                        DM_FAIL();
+                    if (!dump_anchor(e, val))
+                        DM_FAIL();
+                    if (!dump_tag(e, val))
+                        DM_FAIL();
+                    EMIT_TRIM_SPACE(e);
+                } else if (!explicit_key && from_flow) {
+                    if (val && val->type == CYAML_NULL)
+                        if (!emit_cstr(e, " null"))
+                            DM_FAIL();
+                } else if (val && val->type == CYAML_SCALAR && (val->style == CYAML_LITERAL || val->style == CYAML_FOLDED) && val->chomp != CYAML_KEEP) {
+                    if (!emit_cstr(e, " \"\""))
+                        DM_FAIL();
+                }
+                f->idx++;
+                f->state = DUMPF_MAP;
+                break;
+            }
+
+            if (val->type == CYAML_SEQ) {
+                if (val->style == (cyaml_style_t)CYAML_FLOW && val->seq.count == 0) {
+                    if (!emit_char(e, C_SP))
+                        DM_FAIL();
+                    f->idx++;
+                    f->state = DUMPF_MAP;
+                    DM_PUSH(val, DUMPF_VALUE, f->depth + 1);
+                    break;
+                }
+                if (val_has_props) {
+                    if (!emit_char(e, C_SP))
+                        DM_FAIL();
+                    if (!dump_anchor(e, val))
+                        DM_FAIL();
+                    if (!dump_tag(e, val))
+                        DM_FAIL();
+                    EMIT_TRIM_SPACE(e);
+                    if (f->depth == 0)
+                        if (!emit_char(e, C_LF))
+                            DM_FAIL();
+                    f->idx++;
+                    f->state = DUMPF_MAP;
+                    DM_PUSH(val, DUMPF_SEQ, f->depth);
+                    break;
+                }
+                if (f->depth == 0)
+                    if (!emit_char(e, C_LF))
+                        DM_FAIL();
+                f->idx++;
+                f->state = DUMPF_MAP;
+                DM_PUSH(val, DUMPF_SEQ, f->depth);
+                break;
+            }
+
+            if (val->type == CYAML_MAP) {
+                if (val->style == (cyaml_style_t)CYAML_FLOW && val->map.count == 0) {
+                    if (!emit_char(e, C_SP))
+                        DM_FAIL();
+                    f->idx++;
+                    f->state = DUMPF_MAP;
+                    DM_PUSH(val, DUMPF_VALUE, f->depth + 1);
+                    break;
+                }
+                if (val_has_props) {
+                    if (!emit_char(e, C_SP))
+                        DM_FAIL();
+                    if (!dump_anchor(e, val))
+                        DM_FAIL();
+                    if (!dump_tag(e, val))
+                        DM_FAIL();
+                    EMIT_TRIM_SPACE(e);
+                    f->idx++;
+                    f->state = DUMPF_MAP;
+                    DM_PUSH(val, DUMPF_MAP, f->depth + 1);
+                    break;
+                }
+                f->idx++;
+                f->state = DUMPF_MAP;
+                DM_PUSH(val, DUMPF_VALUE, f->depth + 1);
+                break;
+            }
+
+            if (!emit_char(e, C_SP))
+                DM_FAIL();
+            f->idx++;
+            f->state = DUMPF_MAP;
+            DM_PUSH(val, DUMPF_VALUE, f->depth + 1);
+            break;
+        }
+
+        case DUMPF_DASH_ITEM: {
+            // Emit "- " then analyze item and handle appropriately
+            if (!emit_cstr(e, "- "))
+                DM_FAIL();
+
+            if (!n) {
+                if (!emit_cstr(e, S_NULL))
+                    DM_FAIL();
+                stack_count--;
+                break;
+            }
+
+            // Case 1: SEQ with first item being MAP with explicit key
+            if (n->type == CYAML_SEQ && n->seq.count > 0 && n->anchor.len == 0 && n->tag.len == 0) {
+                cyaml_node_t* first = n->seq.items[0];
+                if (first && first->type == CYAML_MAP && first->map.count > 0 && first->anchor.len == 0 && first->tag.len == 0 && key_needs_explicit(e, first->map.pairs[0].key)) {
+                    // Emit "- ? " for the nested structure
+                    if (!emit_cstr(e, "- ? "))
+                        DM_FAIL();
+                    cyaml_node_t* k = first->map.pairs[0].key;
+
+                    // Set up this frame as continuation for after key processing
+                    f->state = DUMPF_DASH_SEQ_MAP;
+                    f->idx = 0; // key seq item index (if key is SEQ)
+                    f->sub_idx = 0; // phase tracking
+
+                    if (k->type == CYAML_SEQ && k->seq.count > 0) {
+                        // Key is a SEQ - inline the first item
+                        DM_PUSH(k->seq.items[0], DUMPF_DASH_ITEM, f->depth + 2);
+                    } else {
+                        // Key is not SEQ - inline it directly
+                        DM_PUSH(k, DUMPF_DASH_ITEM, f->depth + 2);
+                    }
+                    break;
+                }
+                // Simple SEQ case: inline first item, then handle rest
+                f->state = DUMPF_DASH_SEQ;
+                f->idx = 1; // next item to process
+                DM_PUSH(first, DUMPF_DASH_ITEM, f->depth + 2);
+                break;
+            }
+
+            // Case 2: MAP with explicit key (not nested in SEQ)
+            if (n->type == CYAML_MAP && n->map.count > 0 && n->anchor.len == 0 && n->tag.len == 0 && key_needs_explicit(e, n->map.pairs[0].key)) {
+                if (!emit_cstr(e, "? "))
+                    DM_FAIL();
+                cyaml_node_t* k = n->map.pairs[0].key;
+
+                f->state = DUMPF_DASH_MAP;
+                f->idx = 0;
+
+                if (k->type == CYAML_SEQ && k->seq.count > 0) {
+                    // Key is SEQ - inline first item
+                    DM_PUSH(k->seq.items[0], DUMPF_DASH_ITEM, f->depth + 2);
                 } else {
-                    EMIT(e, ':');
+                    // Key is not SEQ - dump it directly
+                    f->sub_idx = 1; // mark that we're past key handling
+                    DM_PUSH(k, DUMPF_VALUE, f->depth + 2);
+                }
+                break;
+            }
+
+            // Case 3: simple item - dump directly
+            if (n->type == CYAML_SCALAR) {
+                if (!dump_anchor(e, n))
+                    DM_FAIL();
+                if (!dump_tag(e, n))
+                    DM_FAIL();
+                if (!dump_scalar(e, n, f->depth))
+                    DM_FAIL();
+                stack_count--;
+                break;
+            }
+            if (n->type == CYAML_ALIAS) {
+                if (!emit_char(e, '*'))
+                    DM_FAIL();
+                if (!emit_str(e, cyaml_src(e->doc) + n->anchor.off, n->anchor.len))
+                    DM_FAIL();
+                stack_count--;
+                break;
+            }
+            // Other types: delegate to VALUE
+            stack_count--;
+            DM_PUSH(n, DUMPF_VALUE, f->depth);
+            break;
+        }
+
+        case DUMPF_DASH_SEQ_MAP: {
+            // After inline processing of key item(s) for a SEQ containing MAP with explicit key
+            // n is the outer SEQ (e.g., [ [[b,c]]: d, e ])
+            cyaml_node_t* first = n->seq.items[0]; // The MAP with explicit key
+            cyaml_node_t* k = first->map.pairs[0].key;
+            cyaml_node_t* v = first->map.pairs[0].val;
+
+            // Phase 0: check if key is SEQ and we have more key items to process
+            if (f->sub_idx == 0 && k->type == CYAML_SEQ) {
+                f->idx++;
+                if (f->idx < k->seq.count) {
+                    // More key items - emit newline/indent and continue inline
+                    if (!emit_char(e, C_LF))
+                        DM_FAIL();
+                    if (!emit_indent(e, f->depth + 4))
+                        DM_FAIL();
+                    DM_PUSH(k->seq.items[f->idx], DUMPF_DASH_ITEM, f->depth + 4);
+                    break;
+                }
+                // Done with key items, move to value phase
+                f->sub_idx = 1;
+            }
+
+            // Phase 1: emit colon and handle value
+            if (f->sub_idx == 1) {
+                if (!emit_char(e, C_LF))
+                    DM_FAIL();
+                if (!emit_indent(e, f->depth + 2))
+                    DM_FAIL();
+                if (!emit_char(e, ':'))
+                    DM_FAIL();
+                if (!is_empty_value(v)) {
+                    if (!emit_char(e, C_SP))
+                        DM_FAIL();
+                    f->sub_idx = 2;
+                    DM_PUSH(v, DUMPF_VALUE, f->depth + 2);
+                    break;
+                }
+                f->sub_idx = 2;
+            }
+
+            // Phase 2: handle rest of map pairs
+            if (f->sub_idx == 2) {
+                f->idx = 1; // reuse idx for map pair iteration
+                f->sub_idx = 3;
+            }
+            if (f->sub_idx == 3) {
+                if (f->idx < first->map.count) {
+                    cyaml_node_t* mk = first->map.pairs[f->idx].key;
+                    cyaml_node_t* mv = first->map.pairs[f->idx].val;
+                    if (!emit_char(e, C_LF))
+                        DM_FAIL();
+                    if (!emit_indent(e, f->depth + 2))
+                        DM_FAIL();
+                    if (!is_empty_key(mk)) {
+                        if (mk->type == CYAML_SCALAR) {
+                            if (!dump_anchor(e, mk))
+                                DM_FAIL();
+                            if (!dump_tag(e, mk))
+                                DM_FAIL();
+                            if (!dump_scalar(e, mk, f->depth + 2))
+                                DM_FAIL();
+                        } else if (mk->type == CYAML_ALIAS) {
+                            if (!emit_char(e, '*'))
+                                DM_FAIL();
+                            if (!emit_str(e, cyaml_src(e->doc) + mk->anchor.off, mk->anchor.len))
+                                DM_FAIL();
+                        }
+                    }
+                    if (!emit_cstr(e, ": "))
+                        DM_FAIL();
+                    if (!is_empty_value(mv)) {
+                        f->idx++;
+                        DM_PUSH(mv, DUMPF_VALUE, f->depth + 2);
+                        break;
+                    }
+                    f->idx++;
+                    break;
+                }
+                f->sub_idx = 4;
+                f->idx = 1; // reset for seq iteration
+            }
+
+            // Phase 4: handle rest of outer seq items
+            if (f->sub_idx == 4) {
+                if (f->idx < n->seq.count) {
+                    if (!emit_char(e, C_LF))
+                        DM_FAIL();
+                    if (!emit_indent(e, f->depth + 1))
+                        DM_FAIL();
+                    if (!emit_cstr(e, "- "))
+                        DM_FAIL();
+                    f->idx++;
+                    DM_PUSH(n->seq.items[f->idx - 1], DUMPF_VALUE, f->depth + 2);
+                    break;
                 }
             }
+            stack_count--;
+            break;
         }
 
-        bool val_has_props = val && (val->anchor.len > 0 || val->tag.len > 0);
-        bool explicit_key = !is_empty_key(key) && key_needs_explicit(e, key);
-        bool from_flow = (n->style == (cyaml_style_t)CYAML_FLOW);
-        if (is_empty_value(val)) {
-            if (val_has_props) {
-                EMIT(e, C_SP);
-                DUMP_PROPS(e, val);
-                EMIT_TRIM_SPACE(e);
-            } else if (!explicit_key && from_flow) {
-                // Implicit null from flow mapping (explicit empty stays empty)
-                if (val && val->type == CYAML_NULL)
-                    EMIT_S(e, " null");
-            } else if (val && val->type == CYAML_SCALAR && (val->style == CYAML_LITERAL || val->style == CYAML_FOLDED) && val->chomp != CYAML_KEEP) {
-                EMIT_S(e, " \"\"");
+        case DUMPF_DASH_SEQ: {
+            // After inline first item of simple SEQ, handle rest with newlines
+            if (f->idx >= n->seq.count) {
+                stack_count--;
+                break;
             }
-        } else if (val->type == CYAML_SEQ) {
-            if (val->style == (cyaml_style_t)CYAML_FLOW && val->seq.count == 0) {
-                EMIT(e, C_SP);
-                DNODE(e, val, depth + 1);
-            } else if (val_has_props) {
-                EMIT(e, C_SP);
-                DUMP_PROPS(e, val);
-                EMIT_TRIM_SPACE(e);
-                if (depth == 0)
-                    EMIT(e, C_LF);
-                if (!dump_block_seq(e, val, depth))
-                    return false;
-            } else {
-                if (depth == 0)
-                    EMIT(e, C_LF);
-                if (!dump_block_seq(e, val, depth))
-                    return false;
+            if (!emit_char(e, C_LF))
+                DM_FAIL();
+            if (!emit_indent(e, f->depth + 2))
+                DM_FAIL();
+            if (!emit_cstr(e, "- "))
+                DM_FAIL();
+            cyaml_node_t* item = n->seq.items[f->idx];
+            f->idx++;
+            DM_PUSH(item, DUMPF_VALUE, f->depth + 3);
+            break;
+        }
+
+        case DUMPF_DASH_MAP: {
+            // After inline key handling for MAP with explicit key
+            cyaml_node_t* k = n->map.pairs[0].key;
+            cyaml_node_t* v = n->map.pairs[0].val;
+
+            // Phase 0: if key is SEQ, iterate remaining key items
+            if (f->sub_idx == 0 && k->type == CYAML_SEQ) {
+                f->idx++;
+                if (f->idx < k->seq.count) {
+                    if (!emit_char(e, C_LF))
+                        DM_FAIL();
+                    if (!emit_indent(e, f->depth + 2))
+                        DM_FAIL();
+                    DM_PUSH(k->seq.items[f->idx], DUMPF_DASH_ITEM, f->depth + 2);
+                    break;
+                }
+                f->sub_idx = 1;
             }
-        } else if (val->type == CYAML_MAP) {
-            if (val->style == (cyaml_style_t)CYAML_FLOW && val->map.count == 0) {
-                EMIT(e, C_SP);
-                DNODE(e, val, depth + 1);
-            } else if (val_has_props) {
-                EMIT(e, C_SP);
-                DUMP_PROPS(e, val);
-                EMIT_TRIM_SPACE(e);
-                if (!dump_block_map(e, val, depth + 1))
-                    return false;
-            } else {
-                DNODE(e, val, depth + 1);
+
+            // Phase 1: emit colon and handle value
+            if (f->sub_idx <= 1) {
+                if (!emit_char(e, C_LF))
+                    DM_FAIL();
+                if (!emit_indent(e, f->depth))
+                    DM_FAIL();
+                if (!emit_char(e, ':'))
+                    DM_FAIL();
+                if (!is_empty_value(v)) {
+                    if (!emit_char(e, C_SP))
+                        DM_FAIL();
+                    stack_count--;
+                    DM_PUSH(v, DUMPF_VALUE, f->depth + 1);
+                    break;
+                }
             }
-        } else {
-            EMIT(e, C_SP);
-            DNODE(e, val, depth + 1);
+            stack_count--;
+            break;
+        }
+
+        case DUMPF_SEQ_KEYSEQ: {
+            // Handle key SEQ iteration for explicit key in SEQ context
+            // n is the MAP, we access n->map.pairs[0].key for the key SEQ
+            cyaml_node_t* key = n->map.pairs[0].key;
+            cyaml_node_t* val = n->map.pairs[0].val;
+
+            // Phase 0: iterate remaining key items
+            if (f->sub_idx == 0) {
+                f->idx++;
+                if (f->idx < key->seq.count) {
+                    // More key items - emit newline/indent and push inline
+                    if (!emit_char(e, C_LF))
+                        DM_FAIL();
+                    if (!emit_indent(e, f->depth + 1))
+                        DM_FAIL();
+                    DM_PUSH(key->seq.items[f->idx], DUMPF_DASH_ITEM, f->depth + 1);
+                    break;
+                }
+                // Done with key items, move to value phase
+                f->sub_idx = 1;
+            }
+
+            // Phase 1: emit colon and handle value
+            if (f->sub_idx == 1) {
+                if (!emit_char(e, C_LF))
+                    DM_FAIL();
+                if (!emit_indent(e, f->depth))
+                    DM_FAIL();
+                if (!emit_char(e, ':'))
+                    DM_FAIL();
+                if (!is_empty_value(val)) {
+                    if (!emit_char(e, C_SP))
+                        DM_FAIL();
+                    f->sub_idx = 2;
+                    f->idx = 1; // for map pair iteration
+                    DM_PUSH(val, DUMPF_VALUE, f->depth + 1);
+                    break;
+                }
+                f->sub_idx = 2;
+                f->idx = 1;
+            }
+
+            // Phase 2: handle rest of map pairs
+            if (f->sub_idx == 2) {
+                if (f->idx < n->map.count) {
+                    cyaml_node_t* mk = n->map.pairs[f->idx].key;
+                    cyaml_node_t* mv = n->map.pairs[f->idx].val;
+                    if (!emit_char(e, C_LF))
+                        DM_FAIL();
+                    if (!emit_indent(e, f->depth))
+                        DM_FAIL();
+                    if (!is_empty_key(mk)) {
+                        if (mk->type == CYAML_SCALAR) {
+                            if (!dump_anchor(e, mk))
+                                DM_FAIL();
+                            if (!dump_tag(e, mk))
+                                DM_FAIL();
+                            if (!dump_scalar(e, mk, f->depth))
+                                DM_FAIL();
+                        } else if (mk->type == CYAML_ALIAS) {
+                            if (!emit_char(e, '*'))
+                                DM_FAIL();
+                            if (!emit_str(e, cyaml_src(e->doc) + mk->anchor.off, mk->anchor.len))
+                                DM_FAIL();
+                        }
+                    }
+                    if (!emit_cstr(e, ": "))
+                        DM_FAIL();
+                    if (!is_empty_value(mv)) {
+                        f->idx++;
+                        DM_PUSH(mv, DUMPF_VALUE, f->depth + 1);
+                        break;
+                    }
+                    f->idx++;
+                    break;
+                }
+            }
+            stack_count--;
+            break;
+        }
         }
     }
-    return true;
-}
 
-//! Dump any node
-static bool dump_node(emitter_t* e, const cyaml_node_t* n, int depth)
-{
-    if (!n || n->type == CYAML_NONE) {
-        EMIT_S(e, S_NULL);
-        return true;
-    }
-
-    switch (n->type) {
-    case CYAML_NULL:
-        if (!dump_anchor(e, n))
-            return false;
-        if (n->tag.len > 0)
-            return emit_resolved_tag_raw(e, n);
-        if (n->anchor.len > 0) {
-            EMIT_TRIM_SPACE(e);
-            return true;
-        }
-        if (!dump_tag(e, n))
-            return false;
-        EMIT_S(e, S_NULL);
-        return true;
-
-    case CYAML_SCALAR:
-        if (!dump_anchor(e, n))
-            return false;
-        if (n->tag.len > 0 && n->span.len == 0)
-            return emit_resolved_tag_raw(e, n);
-        if (!dump_tag(e, n))
-            return false;
-        return dump_scalar(e, n, depth);
-
-    case CYAML_SEQ:
-        if (n->seq.count == 0) {
-            DUMP_PROPS(e, n);
-            EMIT_S(e, "[]");
-            return true;
-        }
-        if (n->anchor.len > 0 || n->tag.len > 0) {
-            DUMP_PROPS(e, n);
-            EMIT_TRIM_SPACE(e);
-            EMIT(e, C_LF);
-        }
-        return dump_block_seq(e, n, depth);
-
-    case CYAML_MAP:
-        if (n->map.count == 0) {
-            DUMP_PROPS(e, n);
-            EMIT_S(e, "{}");
-            return true;
-        }
-        if (n->anchor.len > 0 || n->tag.len > 0) {
-            DUMP_PROPS(e, n);
-            EMIT_TRIM_SPACE(e);
-            EMIT(e, C_LF);
-        }
-        return dump_block_map(e, n, depth);
-
-    case CYAML_ALIAS:
-        EMIT(e, '*');
-        return emit_str(e, cyaml_src(e->doc) + n->anchor.off, n->anchor.len);
-
-    default:
-        CYAML_UNREACHABLE("invalid node type");
-    }
+cleanup:
+    free(stack);
+    return result;
 }
 
 //! Dump single document
@@ -2023,7 +2962,7 @@ static bool dump_document(emitter_t* e, const cyaml_doc_t* doc,
             for (uint32_t i = 0; i < doc->root->map.count && !has_block_scalars; i++) {
                 cyaml_node_t* v = doc->root->map.pairs[i].val;
                 if (v && v->style == (cyaml_style_t)CYAML_FLOW) {
-                    uint32_t lines = span_line_count(v->span);
+                    uint32_t lines = (v->span.end_line && v->span.start_line) ? v->span.end_line - v->span.start_line : 0;
                     uint32_t items = (v->type == CYAML_MAP) ? v->map.count : (v->type == CYAML_SEQ) ? v->seq.count
                                                                                                     : 0;
                     // If lines > items + 1, the flow collection has unusual formatting
@@ -2090,7 +3029,7 @@ static bool dump_document(emitter_t* e, const cyaml_doc_t* doc,
                     }
                 } else if (!needs_doc_start) {
                     // Check if scalar will be plain (needs ---) or quoted (no --- needed)
-                    if (!needs_quoting(str, len)) {
+                    if (!needs_quoting_ex(str, len, 0)) {
                         // Plain scalar needs --- to avoid ambiguity
                         needs_doc_start = true;
                     }

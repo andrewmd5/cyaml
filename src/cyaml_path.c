@@ -54,7 +54,7 @@ typedef struct {
         int64_t i;
         double f;
     } val;
-} token_t;
+} path_token_t;
 
 // #endregion
 
@@ -64,7 +64,7 @@ typedef struct {
     const char* src;
     const char* cur;
     const char* end;
-    token_t tok;
+    path_token_t tok;
     const char* error;
     bool in_filter;
 } lexer_t;
@@ -73,6 +73,24 @@ typedef struct {
 #define LEX_PEEK(l, n) ((l)->cur + (n) < (l)->end ? (l)->cur[n] : C_NUL)
 #define LEX_LEFT(l) ((uint32_t)((l)->end - (l)->cur))
 #define LEX_ADV(l) ((l)->cur++)
+
+#define PARSE_SIGNED_INT(p, out, flag, flags, on_err) \
+    do {                                              \
+        if ((p)->lex.tok.type == TOK_INT) {           \
+            (out) = (p)->lex.tok.val.i;               \
+            (flags) |= (flag);                        \
+            lex_next(&(p)->lex);                      \
+        } else if ((p)->lex.tok.type == TOK_MINUS) {  \
+            lex_next(&(p)->lex);                      \
+            if ((p)->lex.tok.type != TOK_INT) {       \
+                parse_err(p, "expected integer");     \
+                on_err;                               \
+            }                                         \
+            (out) = -(p)->lex.tok.val.i;              \
+            (flags) |= (flag);                        \
+            lex_next(&(p)->lex);                      \
+        }                                             \
+    } while (0)
 
 static void lex_init(lexer_t* l, const char* path)
 {
@@ -130,12 +148,17 @@ static void lex_number(lexer_t* l)
         }
         if (l->cur < l->end && (*l->cur == 'e' || *l->cur == 'E')) {
             l->cur++;
-            int exp_sign = 1, exp = 0;
+            int exp_sign = 1;
             if (l->cur < l->end && (*l->cur == '+' || *l->cur == '-'))
                 exp_sign = (*l->cur++ == '-') ? -1 : 1;
-            while (l->cur < l->end && CYAML_IS_DIGIT(*l->cur))
-                exp = exp * 10 + (*l->cur++ - '0');
-            fval *= pow(10.0, exp_sign * exp);
+            bool exp_overflow = false;
+            uint64_t exp_val = cyaml_parse_u64_n(&l->cur, l->end, &exp_overflow);
+            if (exp_overflow || exp_val > 308) {
+                l->tok.type = TOK_ERROR;
+                l->error = "exponent overflow";
+                return;
+            }
+            fval *= pow(10.0, exp_sign * (int)exp_val);
         }
         l->tok.type = TOK_FLOAT;
         l->tok.val.f = neg ? -fval : fval;
@@ -200,7 +223,7 @@ static void lex_next(lexer_t* l)
 {
     lex_skip_ws(l);
     if (l->cur >= l->end) {
-        l->tok = (token_t) { TOK_EOF, l->cur, 0, { 0 } };
+        l->tok = (path_token_t) { TOK_EOF, l->cur, 0, { 0 } };
         return;
     }
 
@@ -391,7 +414,7 @@ typedef struct {
     uint32_t step_count;
 } expr_pool_t;
 
-static expr_t* pool_expr(expr_pool_t* p, expr_type_t type)
+static inline expr_t* pool_expr(expr_pool_t* p, expr_type_t type)
 {
     if (p->expr_count >= 128)
         return NULL;
@@ -401,7 +424,7 @@ static expr_t* pool_expr(expr_pool_t* p, expr_type_t type)
     return e;
 }
 
-static step_t* pool_step(expr_pool_t* p)
+static inline step_t* pool_step(expr_pool_t* p)
 {
     if (p->step_count >= 256)
         return NULL;
@@ -419,9 +442,9 @@ typedef struct {
     expr_pool_t* pool;
     const char* error;
     uint32_t error_pos;
-} parser_t;
+} path_parser_t;
 
-static void parse_err(parser_t* p, const char* msg)
+static inline void parse_err(path_parser_t* p, const char* msg)
 {
     if (!p->error) {
         p->error = msg;
@@ -429,24 +452,22 @@ static void parse_err(parser_t* p, const char* msg)
     }
 }
 
-#define PARSE_ERR(p, msg) parse_err(p, msg)
-
-static bool expect(parser_t* p, tok_t t)
+static bool expect(path_parser_t* p, tok_t t)
 {
     if (p->lex.tok.type == t) {
         lex_next(&p->lex);
         return true;
     }
-    PARSE_ERR(p, "unexpected token");
+    parse_err(p, "unexpected token");
     return false;
 }
 
-static expr_t* parse_expr(parser_t* p);
+static expr_t* parse_expr(path_parser_t* p);
 
-static step_t* add_step(parser_t* p, path_t* path)
+static step_t* add_step(path_parser_t* p, path_t* path)
 {
     if (path->count >= YPATH_MAX_STEPS) {
-        PARSE_ERR(p, "too many steps");
+        parse_err(p, "too many steps");
         return NULL;
     }
     step_t* s = &path->steps[path->count++];
@@ -454,7 +475,7 @@ static step_t* add_step(parser_t* p, path_t* path)
     return s;
 }
 
-static bool parse_bracket(parser_t* p, path_t* path)
+static bool parse_bracket(path_parser_t* p, path_t* path)
 {
     lex_next(&p->lex);
 
@@ -475,54 +496,15 @@ static bool parse_bracket(parser_t* p, path_t* path)
         uint8_t flags = 0;
         bool is_slice = false;
 
-        if (p->lex.tok.type == TOK_INT) {
-            start = p->lex.tok.val.i;
-            flags |= 1;
-            lex_next(&p->lex);
-        } else if (p->lex.tok.type == TOK_MINUS) {
-            lex_next(&p->lex);
-            if (p->lex.tok.type != TOK_INT) {
-                PARSE_ERR(p, "expected integer");
-                return false;
-            }
-            start = -p->lex.tok.val.i;
-            flags |= 1;
-            lex_next(&p->lex);
-        }
+        PARSE_SIGNED_INT(p, start, 1, flags, return false);
 
         if (p->lex.tok.type == TOK_COLON) {
             is_slice = true;
             lex_next(&p->lex);
-            if (p->lex.tok.type == TOK_INT) {
-                end = p->lex.tok.val.i;
-                flags |= 2;
-                lex_next(&p->lex);
-            } else if (p->lex.tok.type == TOK_MINUS) {
-                lex_next(&p->lex);
-                if (p->lex.tok.type != TOK_INT) {
-                    PARSE_ERR(p, "expected integer");
-                    return false;
-                }
-                end = -p->lex.tok.val.i;
-                flags |= 2;
-                lex_next(&p->lex);
-            }
+            PARSE_SIGNED_INT(p, end, 2, flags, return false);
             if (p->lex.tok.type == TOK_COLON) {
                 lex_next(&p->lex);
-                if (p->lex.tok.type == TOK_INT) {
-                    step_val = p->lex.tok.val.i;
-                    flags |= 4;
-                    lex_next(&p->lex);
-                } else if (p->lex.tok.type == TOK_MINUS) {
-                    lex_next(&p->lex);
-                    if (p->lex.tok.type != TOK_INT) {
-                        PARSE_ERR(p, "expected integer");
-                        return false;
-                    }
-                    step_val = -p->lex.tok.val.i;
-                    flags |= 4;
-                    lex_next(&p->lex);
-                }
+                PARSE_SIGNED_INT(p, step_val, 4, flags, return false);
             }
         }
 
@@ -546,14 +528,14 @@ static bool parse_bracket(parser_t* p, path_t* path)
             return false;
         s->type = STEP_WILDCARD;
     } else {
-        PARSE_ERR(p, "expected index, slice, or filter");
+        parse_err(p, "expected index, slice, or filter");
         return false;
     }
 
     return expect(p, TOK_RBRACKET);
 }
 
-static bool parse_step(parser_t* p, path_t* path)
+static bool parse_step(path_parser_t* p, path_t* path)
 {
     step_t* s;
     switch (p->lex.tok.type) {
@@ -605,7 +587,7 @@ static bool parse_step(parser_t* p, path_t* path)
             return false;
         break;
     default:
-        PARSE_ERR(p, "expected step");
+        parse_err(p, "expected step");
         return false;
     }
 
@@ -615,7 +597,7 @@ static bool parse_step(parser_t* p, path_t* path)
     return true;
 }
 
-static bool parse_path_steps(parser_t* p, path_t* path)
+static bool parse_path_steps(path_parser_t* p, path_t* path)
 {
     if (p->lex.tok.type == TOK_EOF || p->lex.tok.type == TOK_RPAREN || p->lex.tok.type == TOK_RBRACKET)
         return true;
@@ -629,7 +611,7 @@ static bool parse_path_steps(parser_t* p, path_t* path)
     return true;
 }
 
-static expr_t* parse_primary(parser_t* p)
+static expr_t* parse_primary(path_parser_t* p)
 {
     expr_t* e;
     switch (p->lex.tok.type) {
@@ -693,7 +675,7 @@ static expr_t* parse_primary(parser_t* p)
                 p->pool->step_count++;
                 break;
             default:
-                PARSE_ERR(p, "expected path step");
+                parse_err(p, "expected path step");
                 return NULL;
             }
         }
@@ -710,71 +692,186 @@ static expr_t* parse_primary(parser_t* p)
             return NULL;
         return e;
     default:
-        PARSE_ERR(p, "expected expression");
+        parse_err(p, "expected expression");
         return NULL;
     }
 }
 
-static expr_t* parse_unary(parser_t* p)
+// Operator precedence (higher = binds tighter)
+static int op_prec(tok_t t)
 {
-    if (p->lex.tok.type == TOK_MINUS || p->lex.tok.type == TOK_BANG) {
-        op_t op = (p->lex.tok.type == TOK_MINUS) ? OP_NEG : OP_NOT;
-        lex_next(&p->lex);
-        expr_t* arg = parse_unary(p);
-        if (!arg)
-            return NULL;
-        expr_t* e = pool_expr(p->pool, EXPR_UNARY);
-        if (!e)
-            return NULL;
-        e->v.unary.op = op;
-        e->v.unary.arg = arg;
-        return e;
+    switch (t) {
+    case TOK_OR:
+        return 1;
+    case TOK_AND:
+        return 2;
+    case TOK_EQ:
+    case TOK_NE:
+        return 3;
+    case TOK_LT:
+    case TOK_LE:
+    case TOK_GT:
+    case TOK_GE:
+        return 4;
+    case TOK_PLUS:
+    case TOK_MINUS:
+        return 5;
+    case TOK_STAR:
+    case TOK_DIV:
+        return 6;
+    default:
+        return 0;
     }
-    return parse_primary(p);
 }
 
-#define PARSE_BINARY(name, next_fn, ...)                 \
-    static expr_t* name(parser_t* p)                     \
-    {                                                    \
-        expr_t* left = next_fn(p);                       \
-        if (!left)                                       \
-            return NULL;                                 \
-        for (;;) {                                       \
-            op_t op = (op_t)0;                           \
-            bool found = false;                          \
-            __VA_ARGS__                                  \
-            if (!found)                                  \
-                break;                                   \
-            lex_next(&p->lex);                           \
-            expr_t* right = next_fn(p);                  \
-            if (!right)                                  \
-                return NULL;                             \
-            expr_t* e = pool_expr(p->pool, EXPR_BINARY); \
-            if (!e)                                      \
-                return NULL;                             \
-            e->v.binary.op = op;                         \
-            e->v.binary.left = left;                     \
-            e->v.binary.right = right;                   \
-            left = e;                                    \
-        }                                                \
-        return left;                                     \
+static op_t tok_to_op(tok_t t)
+{
+    switch (t) {
+    case TOK_OR:
+        return OP_OR;
+    case TOK_AND:
+        return OP_AND;
+    case TOK_EQ:
+        return OP_EQ;
+    case TOK_NE:
+        return OP_NE;
+    case TOK_LT:
+        return OP_LT;
+    case TOK_LE:
+        return OP_LE;
+    case TOK_GT:
+        return OP_GT;
+    case TOK_GE:
+        return OP_GE;
+    case TOK_PLUS:
+        return OP_ADD;
+    case TOK_MINUS:
+        return OP_SUB;
+    case TOK_STAR:
+        return OP_MUL;
+    case TOK_DIV:
+        return OP_DIV;
+    default:
+        return (op_t)-1;
+    }
+}
+
+#define EXPR_STACK_CAP 64
+
+typedef struct {
+    op_t op;
+    int prec;
+    bool unary;
+} op_entry_t;
+
+typedef struct {
+    expr_t* operands[EXPR_STACK_CAP];
+    op_entry_t ops[EXPR_STACK_CAP];
+    int operand_count;
+    int op_count;
+} expr_stack_t;
+
+static bool expr_stack_reduce(path_parser_t* p, expr_stack_t* s)
+{
+    if (s->op_count == 0)
+        return false;
+    s->op_count--;
+    if (s->ops[s->op_count].unary) {
+        if (s->operand_count < 1)
+            return false;
+        expr_t* arg = s->operands[--s->operand_count];
+        expr_t* e = pool_expr(p->pool, EXPR_UNARY);
+        if (!e)
+            return false;
+        e->v.unary.op = s->ops[s->op_count].op;
+        e->v.unary.arg = arg;
+        s->operands[s->operand_count++] = e;
+    } else {
+        if (s->operand_count < 2)
+            return false;
+        expr_t* right = s->operands[--s->operand_count];
+        expr_t* left = s->operands[--s->operand_count];
+        expr_t* e = pool_expr(p->pool, EXPR_BINARY);
+        if (!e)
+            return false;
+        e->v.binary.op = s->ops[s->op_count].op;
+        e->v.binary.left = left;
+        e->v.binary.right = right;
+        s->operands[s->operand_count++] = e;
+    }
+    return true;
+}
+
+static expr_t* parse_expr(path_parser_t* p)
+{
+    expr_stack_t s = { .operand_count = 0, .op_count = 0 };
+    bool expect_operand = true;
+
+    for (;;) {
+        if (expect_operand) {
+            // Handle prefix unary operators
+            while (p->lex.tok.type == TOK_MINUS || p->lex.tok.type == TOK_BANG) {
+                if (s.op_count >= EXPR_STACK_CAP) {
+                    parse_err(p, "expression too complex");
+                    return NULL;
+                }
+                op_t op = (p->lex.tok.type == TOK_MINUS) ? OP_NEG : OP_NOT;
+                s.ops[s.op_count++] = (op_entry_t) { op, 100, true };
+                lex_next(&p->lex);
+            }
+
+            // Parse primary
+            expr_t* e = parse_primary(p);
+            if (!e)
+                return NULL;
+            if (s.operand_count >= EXPR_STACK_CAP) {
+                parse_err(p, "expression too complex");
+                return NULL;
+            }
+            s.operands[s.operand_count++] = e;
+
+            // Reduce any pending unary operators
+            while (s.op_count > 0 && s.ops[s.op_count - 1].unary) {
+                if (!expr_stack_reduce(p, &s))
+                    return NULL;
+            }
+            expect_operand = false;
+        } else {
+            // Check for binary operator
+            int prec = op_prec(p->lex.tok.type);
+            if (prec == 0)
+                break;
+
+            // Reduce operators with higher or equal precedence (left associative)
+            while (s.op_count > 0 && !s.ops[s.op_count - 1].unary && s.ops[s.op_count - 1].prec >= prec) {
+                if (!expr_stack_reduce(p, &s))
+                    return NULL;
+            }
+
+            if (s.op_count >= EXPR_STACK_CAP) {
+                parse_err(p, "expression too complex");
+                return NULL;
+            }
+            s.ops[s.op_count++] = (op_entry_t) { tok_to_op(p->lex.tok.type), prec, false };
+            lex_next(&p->lex);
+            expect_operand = true;
+        }
     }
 
-PARSE_BINARY(parse_mult, parse_unary, if (p->lex.tok.type == TOK_STAR) { op = OP_MUL; found = true; } else if (p->lex.tok.type == TOK_DIV) { op = OP_DIV; found = true; })
+    // Reduce remaining operators
+    while (s.op_count > 0) {
+        if (!expr_stack_reduce(p, &s))
+            return NULL;
+    }
 
-PARSE_BINARY(parse_add, parse_mult, if (p->lex.tok.type == TOK_PLUS) { op = OP_ADD; found = true; } else if (p->lex.tok.type == TOK_MINUS) { op = OP_SUB; found = true; })
+    if (s.operand_count != 1) {
+        parse_err(p, "invalid expression");
+        return NULL;
+    }
+    return s.operands[0];
+}
 
-PARSE_BINARY(parse_rel, parse_add, if (p->lex.tok.type == TOK_LT) { op = OP_LT; found = true; } else if (p->lex.tok.type == TOK_LE) { op = OP_LE; found = true; } else if (p->lex.tok.type == TOK_GT) { op = OP_GT; found = true; } else if (p->lex.tok.type == TOK_GE) { op = OP_GE; found = true; })
-
-PARSE_BINARY(parse_eq, parse_rel, if (p->lex.tok.type == TOK_EQ) { op = OP_EQ; found = true; } else if (p->lex.tok.type == TOK_NE) { op = OP_NE; found = true; })
-
-PARSE_BINARY(parse_and, parse_eq, if (p->lex.tok.type == TOK_AND) { op = OP_AND; found = true; })
-
-PARSE_BINARY(parse_or, parse_and, if (p->lex.tok.type == TOK_OR) { op = OP_OR; found = true; })
-
-static expr_t* parse_expr(parser_t* p) { return parse_or(p); }
-
-static bool parse_path(parser_t* p, path_t* path)
+static bool parse_path(path_parser_t* p, path_t* path)
 {
     memset(path, 0, sizeof(*path));
     if (p->lex.tok.type == TOK_SLASH) {
@@ -788,14 +885,20 @@ static bool parse_path(parser_t* p, path_t* path)
 
 // #region Evaluator
 
-#define EVAL_MAX_DEPTH 128
+#define CLAMP(v, lo, hi) ((v) < (lo) ? (lo) : (v) > (hi) ? (hi) \
+                                                         : (v))
+
+static inline int64_t norm_slice_idx(int64_t idx, int64_t len)
+{
+    idx = CLAMP(idx, -len, len);
+    return idx < 0 ? idx + len : idx;
+}
 
 typedef struct {
     const cyaml_doc_t* doc;
     const cyaml_node_t* root;
     const cyaml_node_t* current;
     const char* src;
-    int depth;
 } eval_t;
 
 typedef struct {
@@ -804,10 +907,7 @@ typedef struct {
     uint32_t cap;
 } nodebuf_t;
 
-static void nodebuf_free(nodebuf_t* b)
-{
-    free(b->nodes);
-}
+static inline void nodebuf_free(nodebuf_t* b) { free(b->nodes); }
 
 static bool nodebuf_add(nodebuf_t* b, cyaml_node_t* n)
 {
@@ -826,69 +926,177 @@ static bool nodebuf_add(nodebuf_t* b, cyaml_node_t* n)
     return true;
 }
 
+#define PATH_STACK_INIT_CAP 32
+
+typedef struct {
+    cyaml_node_t* node;
+    uint32_t child_idx;
+    uint8_t phase;
+} path_frame_t;
+
+#define STACK_INIT(stk, cnt, cap, on_fail)                          \
+    path_frame_t* stk = malloc(PATH_STACK_INIT_CAP * sizeof(*stk)); \
+    if (!stk) {                                                     \
+        on_fail;                                                    \
+    }                                                               \
+    size_t cnt = 0, cap = PATH_STACK_INIT_CAP
+
+#define STACK_PUSH(stk, cnt, cap, nd, on_fail)                            \
+    do {                                                                  \
+        if ((cnt) >= (cap)) {                                             \
+            size_t new_cap = (cap) * 2;                                   \
+            path_frame_t* tmp = realloc((stk), new_cap * sizeof(*(stk))); \
+            if (!tmp) {                                                   \
+                on_fail;                                                  \
+            }                                                             \
+            (stk) = tmp;                                                  \
+            (cap) = new_cap;                                              \
+        }                                                                 \
+        (stk)[(cnt)] = (path_frame_t) { (nd), 0, 0 };                     \
+        (cnt)++;                                                          \
+    } while (0)
+
+#define STACK_ITER_SEQ(f, cur, stk, cnt, cap, on_fail)        \
+    if ((f)->child_idx >= (cur)->seq.count) {                 \
+        (cnt)--;                                              \
+    } else {                                                  \
+        cyaml_node_t* c = (cur)->seq.items[(f)->child_idx++]; \
+        if (c)                                                \
+            STACK_PUSH(stk, cnt, cap, c, on_fail);            \
+    }
+
+#define STACK_ITER_MAP_VAL(f, cur, stk, cnt, cap, on_fail)        \
+    if ((f)->child_idx >= (cur)->map.count) {                     \
+        (cnt)--;                                                  \
+    } else {                                                      \
+        cyaml_node_t* c = (cur)->map.pairs[(f)->child_idx++].val; \
+        if (c)                                                    \
+            STACK_PUSH(stk, cnt, cap, c, on_fail);                \
+    }
+
+#define STACK_ITER_MAP_ALL(f, cur, stk, cnt, cap, on_fail)        \
+    if ((f)->child_idx >= (cur)->map.count) {                     \
+        (cnt)--;                                                  \
+    } else {                                                      \
+        cyaml_node_t* k = (cur)->map.pairs[(f)->child_idx].key;   \
+        cyaml_node_t* v = (cur)->map.pairs[(f)->child_idx++].val; \
+        if (k)                                                    \
+            STACK_PUSH(stk, cnt, cap, k, on_fail);                \
+        if (v)                                                    \
+            STACK_PUSH(stk, cnt, cap, v, on_fail);                \
+    }
+
 static void collect_all(cyaml_node_t* n, nodebuf_t* b)
 {
-    nodebuf_add(b, n);
-    if (n->type == CYAML_SEQ)
-        for (uint32_t i = 0; i < n->seq.count; i++)
-            collect_all(n->seq.items[i], b);
-    else if (n->type == CYAML_MAP)
-        for (uint32_t i = 0; i < n->map.count; i++)
-            collect_all(n->map.pairs[i].val, b);
+    if (!n)
+        return;
+
+    STACK_INIT(stack, stack_count, stack_cap, return);
+    STACK_PUSH(stack, stack_count, stack_cap, n, { free(stack); return; });
+
+    while (stack_count > 0) {
+        path_frame_t* f = &stack[stack_count - 1];
+        cyaml_node_t* cur = f->node;
+
+        if (f->phase == 0) {
+            nodebuf_add(b, cur);
+            f->phase = 1;
+        }
+
+        if (cur->type == CYAML_SEQ)
+            STACK_ITER_SEQ(f, cur, stack, stack_count, stack_cap, { free(stack); return; })
+        else if (cur->type == CYAML_MAP)
+            STACK_ITER_MAP_VAL(f, cur, stack, stack_count, stack_cap, { free(stack); return; })
+        else
+            stack_count--;
+    }
+
+    free(stack);
 }
 
 static cyaml_node_t* find_parent(const cyaml_node_t* root, const cyaml_node_t* child)
 {
     if (!root || root == child)
         return NULL;
-    if (root->type == CYAML_SEQ) {
-        for (uint32_t i = 0; i < root->seq.count; i++) {
-            if (root->seq.items[i] == child)
-                return (cyaml_node_t*)root;
-            cyaml_node_t* p = find_parent(root->seq.items[i], child);
-            if (p)
-                return p;
-        }
-    } else if (root->type == CYAML_MAP) {
-        for (uint32_t i = 0; i < root->map.count; i++) {
-            if (root->map.pairs[i].key == child || root->map.pairs[i].val == child)
-                return (cyaml_node_t*)root;
-            cyaml_node_t* p = find_parent(root->map.pairs[i].key, child);
-            if (p)
-                return p;
-            p = find_parent(root->map.pairs[i].val, child);
-            if (p)
-                return p;
+
+    STACK_INIT(stack, stack_count, stack_cap, return NULL);
+    cyaml_node_t* result = NULL;
+    STACK_PUSH(stack, stack_count, stack_cap, (cyaml_node_t*)root, { free(stack); return NULL; });
+
+    while (stack_count > 0) {
+        path_frame_t* f = &stack[stack_count - 1];
+        cyaml_node_t* cur = f->node;
+
+        if (cur->type == CYAML_SEQ) {
+            if (f->child_idx >= cur->seq.count) {
+                stack_count--;
+            } else {
+                cyaml_node_t* c = cur->seq.items[f->child_idx++];
+                if (c == child) {
+                    result = cur;
+                    break;
+                }
+                if (c)
+                    STACK_PUSH(stack, stack_count, stack_cap, c, { free(stack); return NULL; });
+            }
+        } else if (cur->type == CYAML_MAP) {
+            if (f->child_idx >= cur->map.count) {
+                stack_count--;
+            } else {
+                cyaml_node_t* k = cur->map.pairs[f->child_idx].key;
+                cyaml_node_t* v = cur->map.pairs[f->child_idx++].val;
+                if (k == child || v == child) {
+                    result = cur;
+                    break;
+                }
+                if (k)
+                    STACK_PUSH(stack, stack_count, stack_cap, k, { free(stack); return NULL; });
+                if (v)
+                    STACK_PUSH(stack, stack_count, stack_cap, v, { free(stack); return NULL; });
+            }
+        } else {
+            stack_count--;
         }
     }
-    return NULL;
+
+    free(stack);
+    return result;
 }
 
 static cyaml_node_t* find_anchor(const cyaml_node_t* n, const char* name, uint32_t len, const char* src)
 {
     if (!n)
         return NULL;
-    if (n->anchor.len == len && memcmp(src + n->anchor.off, name, len) == 0)
-        return (cyaml_node_t*)n;
-    if (n->type == CYAML_SEQ)
-        for (uint32_t i = 0; i < n->seq.count; i++) {
-            cyaml_node_t* f = find_anchor(n->seq.items[i], name, len, src);
-            if (f)
-                return f;
+
+    STACK_INIT(stack, stack_count, stack_cap, return NULL);
+    cyaml_node_t* result = NULL;
+    STACK_PUSH(stack, stack_count, stack_cap, (cyaml_node_t*)n, { free(stack); return NULL; });
+
+    while (stack_count > 0) {
+        path_frame_t* f = &stack[stack_count - 1];
+        cyaml_node_t* cur = f->node;
+
+        if (f->phase == 0) {
+            if (cur->anchor.len == len && memcmp(src + cur->anchor.off, name, len) == 0) {
+                result = cur;
+                break;
+            }
+            f->phase = 1;
         }
-    else if (n->type == CYAML_MAP)
-        for (uint32_t i = 0; i < n->map.count; i++) {
-            cyaml_node_t* f = find_anchor(n->map.pairs[i].key, name, len, src);
-            if (f)
-                return f;
-            f = find_anchor(n->map.pairs[i].val, name, len, src);
-            if (f)
-                return f;
-        }
-    return NULL;
+
+        if (cur->type == CYAML_SEQ)
+            STACK_ITER_SEQ(f, cur, stack, stack_count, stack_cap, { free(stack); return NULL; })
+        else if (cur->type == CYAML_MAP)
+            STACK_ITER_MAP_ALL(f, cur, stack, stack_count, stack_cap, { free(stack); return NULL; })
+        else
+            stack_count--;
+    }
+
+    free(stack);
+    return result;
 }
 
-static cyaml_node_t* resolve_alias(cyaml_node_t* n, const cyaml_node_t* root, const char* src)
+static cyaml_node_t* path_resolve_alias(cyaml_node_t* n, const cyaml_node_t* root, const char* src)
 {
     if (!n || n->type != CYAML_ALIAS)
         return n;
@@ -1051,7 +1259,7 @@ static bool val_eq(const val_t* a, const val_t* b, const char* src)
 
 static val_t eval_expr(eval_t* ctx, const expr_t* e);
 
-static void val_free(val_t* v)
+static inline void val_free(val_t* v)
 {
     if (v->type == VAL_NODES)
         nodebuf_free(&v->v.nodes);
@@ -1060,8 +1268,6 @@ static void val_free(val_t* v)
 static val_t eval_path_on(eval_t* ctx, cyaml_node_t* start, const step_t* steps, uint32_t count)
 {
     val_t result = { .type = VAL_NODES };
-    if (ctx->depth >= EVAL_MAX_DEPTH)
-        return result;
     nodebuf_t in = { 0 }, out = { 0 };
     nodebuf_add(&in, start);
 
@@ -1070,7 +1276,7 @@ static val_t eval_path_on(eval_t* ctx, cyaml_node_t* start, const step_t* steps,
         out.count = 0;
 
         for (uint32_t ni = 0; ni < in.count; ni++) {
-            cyaml_node_t* n = resolve_alias(in.nodes[ni], ctx->root, ctx->src);
+            cyaml_node_t* n = path_resolve_alias(in.nodes[ni], ctx->root, ctx->src);
             if (!n)
                 continue;
 
@@ -1127,30 +1333,20 @@ static val_t eval_path_on(eval_t* ctx, cyaml_node_t* start, const step_t* steps,
                     int64_t ss = (s->v.slice.flags & 1) ? s->v.slice.start : 0;
                     int64_t se = (s->v.slice.flags & 2) ? s->v.slice.end : len;
                     int64_t st = (s->v.slice.flags & 4) ? s->v.slice.step : 1;
-                    if (ss < -len)
-                        ss = -len;
-                    if (ss > len)
-                        ss = len;
-                    if (se < -len)
-                        se = -len;
-                    if (se > len)
-                        se = len;
-                    if (ss < 0)
-                        ss += len;
-                    if (se < 0)
-                        se += len;
                     if (st == 0)
                         st = 1;
-                    if (st > 0)
+                    if (st > 0) {
+                        ss = norm_slice_idx(ss, len);
+                        se = norm_slice_idx(se, len);
                         for (int64_t i = ss; i < se; i += st)
                             nodebuf_add(&out, n->seq.items[i]);
-                    else {
-                        if (!(s->v.slice.flags & 1))
-                            ss = len - 1;
-                        if (!(s->v.slice.flags & 2))
-                            se = -1;
-                        if (ss >= len)
-                            ss = len - 1;
+                    } else {
+                        ss = (s->v.slice.flags & 1) ? CLAMP(s->v.slice.start, -len, len - 1) : len - 1;
+                        se = (s->v.slice.flags & 2) ? CLAMP(s->v.slice.end, -len - 1, len) : -len - 1;
+                        if (ss < 0)
+                            ss += len;
+                        if (se < -1)
+                            se += len;
                         for (int64_t i = ss; i > se && i >= 0; i += st)
                             nodebuf_add(&out, n->seq.items[i]);
                     }
@@ -1158,7 +1354,6 @@ static val_t eval_path_on(eval_t* ctx, cyaml_node_t* start, const step_t* steps,
                 break;
             case STEP_FILTER: {
                 eval_t fc = *ctx;
-                fc.depth++;
                 if (n->type == CYAML_SEQ) {
                     for (uint32_t i = 0; i < n->seq.count; i++) {
                         fc.current = n->seq.items[i];
@@ -1196,109 +1391,163 @@ static val_t eval_path_on(eval_t* ctx, cyaml_node_t* start, const step_t* steps,
     return result;
 }
 
+#define EVAL_STACK_CAP 64
+
+typedef struct {
+    const expr_t* expr;
+    uint8_t phase;
+} eval_frame_t;
+
 static val_t eval_expr(eval_t* ctx, const expr_t* e)
 {
-    val_t r = { .type = VAL_NULL };
+    eval_frame_t stack[EVAL_STACK_CAP];
+    val_t vals[EVAL_STACK_CAP];
+    int sp = 0, vp = 0;
 
-    switch (e->type) {
-    case EXPR_INT:
-        r.type = VAL_INT;
-        r.v.i = e->v.i;
-        break;
-    case EXPR_FLOAT:
-        r.type = VAL_FLOAT;
-        r.v.f = e->v.f;
-        break;
-    case EXPR_STRING:
-        r.type = VAL_STR;
-        r.v.str.s = e->v.str.s;
-        r.v.str.len = e->v.str.len;
-        break;
-    case EXPR_BOOL:
-        r.type = VAL_BOOL;
-        r.v.b = e->v.b;
-        break;
-    case EXPR_NULL:
-        break;
-    case EXPR_PATH:
-        if (ctx->current)
-            r = eval_path_on(ctx, (cyaml_node_t*)ctx->current, e->v.path.steps, e->v.path.count);
-        break;
-    case EXPR_UNARY: {
-        val_t arg = eval_expr(ctx, e->v.unary.arg);
-        if (e->v.unary.op == OP_NEG) {
-            r.type = VAL_FLOAT;
-            r.v.f = -val_float(&arg, ctx->src);
-        } else {
-            r.type = VAL_BOOL;
-            r.v.b = !val_truthy(&arg, ctx->src);
+    stack[sp++] = (eval_frame_t) { e, 0 };
+
+    while (sp > 0) {
+        eval_frame_t* f = &stack[sp - 1];
+        const expr_t* cur = f->expr;
+
+        switch (cur->type) {
+        case EXPR_INT:
+            sp--;
+            vals[vp++] = (val_t) { .type = VAL_INT, .v.i = cur->v.i };
+            break;
+        case EXPR_FLOAT:
+            sp--;
+            vals[vp++] = (val_t) { .type = VAL_FLOAT, .v.f = cur->v.f };
+            break;
+        case EXPR_STRING:
+            sp--;
+            vals[vp++] = (val_t) { .type = VAL_STR, .v.str = { cur->v.str.s, cur->v.str.len } };
+            break;
+        case EXPR_BOOL:
+            sp--;
+            vals[vp++] = (val_t) { .type = VAL_BOOL, .v.b = cur->v.b };
+            break;
+        case EXPR_NULL:
+            sp--;
+            vals[vp++] = (val_t) { .type = VAL_NULL };
+            break;
+        case EXPR_PATH:
+            sp--;
+            if (ctx->current)
+                vals[vp++] = eval_path_on(ctx, (cyaml_node_t*)ctx->current, cur->v.path.steps, cur->v.path.count);
+            else
+                vals[vp++] = (val_t) { .type = VAL_NULL };
+            break;
+        case EXPR_UNARY:
+            if (f->phase == 0) {
+                f->phase = 1;
+                if (sp >= EVAL_STACK_CAP)
+                    goto overflow;
+                stack[sp++] = (eval_frame_t) { cur->v.unary.arg, 0 };
+            } else {
+                sp--;
+                val_t arg = vals[--vp];
+                val_t r;
+                if (cur->v.unary.op == OP_NEG) {
+                    r.type = VAL_FLOAT;
+                    r.v.f = -val_float(&arg, ctx->src);
+                } else {
+                    r.type = VAL_BOOL;
+                    r.v.b = !val_truthy(&arg, ctx->src);
+                }
+                val_free(&arg);
+                vals[vp++] = r;
+            }
+            break;
+        case EXPR_BINARY:
+            if (f->phase == 0) {
+                f->phase = 1;
+                if (sp >= EVAL_STACK_CAP)
+                    goto overflow;
+                stack[sp++] = (eval_frame_t) { cur->v.binary.left, 0 };
+            } else if (f->phase == 1) {
+                val_t left = vals[vp - 1];
+                bool left_truthy = val_truthy(&left, ctx->src);
+                if (cur->v.binary.op == OP_AND && !left_truthy) {
+                    sp--;
+                    vals[vp - 1] = (val_t) { .type = VAL_BOOL, .v.b = false };
+                    val_free(&left);
+                } else if (cur->v.binary.op == OP_OR && left_truthy) {
+                    sp--;
+                    vals[vp - 1] = (val_t) { .type = VAL_BOOL, .v.b = true };
+                    val_free(&left);
+                } else {
+                    f->phase = 2;
+                    if (sp >= EVAL_STACK_CAP)
+                        goto overflow;
+                    stack[sp++] = (eval_frame_t) { cur->v.binary.right, 0 };
+                }
+            } else {
+                sp--;
+                val_t right = vals[--vp];
+                val_t left = vals[--vp];
+                val_t r = { .type = VAL_BOOL };
+                switch (cur->v.binary.op) {
+                case OP_OR:
+                    r.v.b = val_truthy(&left, ctx->src) || val_truthy(&right, ctx->src);
+                    break;
+                case OP_AND:
+                    r.v.b = val_truthy(&left, ctx->src) && val_truthy(&right, ctx->src);
+                    break;
+                case OP_EQ:
+                    r.v.b = val_eq(&left, &right, ctx->src);
+                    break;
+                case OP_NE:
+                    r.v.b = !val_eq(&left, &right, ctx->src);
+                    break;
+                case OP_LT:
+                    r.v.b = val_float(&left, ctx->src) < val_float(&right, ctx->src);
+                    break;
+                case OP_LE:
+                    r.v.b = val_float(&left, ctx->src) <= val_float(&right, ctx->src);
+                    break;
+                case OP_GT:
+                    r.v.b = val_float(&left, ctx->src) > val_float(&right, ctx->src);
+                    break;
+                case OP_GE:
+                    r.v.b = val_float(&left, ctx->src) >= val_float(&right, ctx->src);
+                    break;
+                case OP_ADD:
+                    r.type = VAL_FLOAT;
+                    r.v.f = val_float(&left, ctx->src) + val_float(&right, ctx->src);
+                    break;
+                case OP_SUB:
+                    r.type = VAL_FLOAT;
+                    r.v.f = val_float(&left, ctx->src) - val_float(&right, ctx->src);
+                    break;
+                case OP_MUL:
+                    r.type = VAL_FLOAT;
+                    r.v.f = val_float(&left, ctx->src) * val_float(&right, ctx->src);
+                    break;
+                case OP_DIV: {
+                    double d = val_float(&right, ctx->src);
+                    r.type = VAL_FLOAT;
+                    r.v.f = (d != 0.0) ? val_float(&left, ctx->src) / d : 0.0;
+                    break;
+                }
+                case OP_NEG:
+                case OP_NOT:
+                    break;
+                }
+                val_free(&left);
+                val_free(&right);
+                vals[vp++] = r;
+            }
+            break;
         }
-        break;
     }
-    case EXPR_BINARY: {
-        val_t left = eval_expr(ctx, e->v.binary.left);
-        if (e->v.binary.op == OP_AND && !val_truthy(&left, ctx->src)) {
-            r.type = VAL_BOOL;
-            r.v.b = false;
-            break;
-        }
-        if (e->v.binary.op == OP_OR && val_truthy(&left, ctx->src)) {
-            r.type = VAL_BOOL;
-            r.v.b = true;
-            break;
-        }
-        val_t right = eval_expr(ctx, e->v.binary.right);
-        r.type = VAL_BOOL;
-        switch (e->v.binary.op) {
-        case OP_OR:
-            r.v.b = val_truthy(&left, ctx->src) || val_truthy(&right, ctx->src);
-            break;
-        case OP_AND:
-            r.v.b = val_truthy(&left, ctx->src) && val_truthy(&right, ctx->src);
-            break;
-        case OP_EQ:
-            r.v.b = val_eq(&left, &right, ctx->src);
-            break;
-        case OP_NE:
-            r.v.b = !val_eq(&left, &right, ctx->src);
-            break;
-        case OP_LT:
-            r.v.b = val_float(&left, ctx->src) < val_float(&right, ctx->src);
-            break;
-        case OP_LE:
-            r.v.b = val_float(&left, ctx->src) <= val_float(&right, ctx->src);
-            break;
-        case OP_GT:
-            r.v.b = val_float(&left, ctx->src) > val_float(&right, ctx->src);
-            break;
-        case OP_GE:
-            r.v.b = val_float(&left, ctx->src) >= val_float(&right, ctx->src);
-            break;
-        case OP_ADD:
-            r.type = VAL_FLOAT;
-            r.v.f = val_float(&left, ctx->src) + val_float(&right, ctx->src);
-            break;
-        case OP_SUB:
-            r.type = VAL_FLOAT;
-            r.v.f = val_float(&left, ctx->src) - val_float(&right, ctx->src);
-            break;
-        case OP_MUL:
-            r.type = VAL_FLOAT;
-            r.v.f = val_float(&left, ctx->src) * val_float(&right, ctx->src);
-            break;
-        case OP_DIV: {
-            double d = val_float(&right, ctx->src);
-            r.type = VAL_FLOAT;
-            r.v.f = (d != 0.0) ? val_float(&left, ctx->src) / d : 0.0;
-            break;
-        }
-        default:
-            break;
-        }
-        break;
-    }
-    }
-    return r;
+
+    return vp > 0 ? vals[0] : (val_t) { .type = VAL_NULL };
+
+overflow:
+    while (vp > 0)
+        val_free(&vals[--vp]);
+    return (val_t) { .type = VAL_NULL };
 }
 
 // #endregion
@@ -1321,7 +1570,7 @@ CYAML_API cyaml_path_result_t cyaml_path_query(const cyaml_doc_t* doc, const cya
     }
 
     expr_pool_t pool = { 0 };
-    parser_t parser = { .pool = &pool };
+    path_parser_t parser = { .pool = &pool };
     lex_init(&parser.lex, path);
     lex_next(&parser.lex);
 
@@ -1338,7 +1587,7 @@ CYAML_API cyaml_path_result_t cyaml_path_query(const cyaml_doc_t* doc, const cya
         return result;
     }
 
-    eval_t ctx = { .doc = doc, .root = doc->root, .current = context, .src = cyaml_src(doc), .depth = 0 };
+    eval_t ctx = { .doc = doc, .root = doc->root, .current = context, .src = cyaml_src(doc) };
     cyaml_node_t* start = parsed.absolute ? (cyaml_node_t*)doc->root : (cyaml_node_t*)context;
     val_t val = eval_path_on(&ctx, start, parsed.steps, parsed.count);
 
@@ -1475,7 +1724,7 @@ CYAML_API void cyaml_path_debug(const char* path)
     printf("  EOF\n\n=== AST ===\n");
 
     expr_pool_t pool = { 0 };
-    parser_t p = { .pool = &pool };
+    path_parser_t p = { .pool = &pool };
     lex_init(&p.lex, path);
     lex_next(&p.lex);
     path_t parsed;

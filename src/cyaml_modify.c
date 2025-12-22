@@ -278,7 +278,7 @@ CYAML_API int cyaml_scanf(const cyaml_doc_t* doc, const char* format, ...)
 
 #define BUILDF_BUF_SIZE 4096
 
-static inline bool needs_quoting(const char* s)
+static inline bool buildf_needs_quoting(const char* s)
 {
     if (!s || !*s)
         return true;
@@ -421,7 +421,7 @@ CYAML_API cyaml_node_t* cyaml_vbuildf(cyaml_doc_t* doc, const char* format, va_l
             const char* s = va_arg(ap, const char*);
             if (!s)
                 s = S_NULL;
-            if (needs_quoting(s)) {
+            if (buildf_needs_quoting(s)) {
                 out = emit_quoted(out, end, s);
                 written = 0;
             } else

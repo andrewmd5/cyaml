@@ -23,10 +23,10 @@ typedef enum {
     TOK_ANCHOR, // [7.1]
     TOK_TAG, // [7.2]
     TOK_SCALAR // [7.3, 8.1]
-} token_type_t;
+} scan_token_type_t;
 
 typedef struct {
-    token_type_t type;
+    scan_token_type_t type;
     cyaml_span_t span; //!< Span includes location info (start_line, start_col, etc.)
     cyaml_style_t style;
     cyaml_chomp_t chomp;
@@ -34,7 +34,7 @@ typedef struct {
     uint8_t leading_breaks;
     uint8_t trailing_breaks;
     bool tab_sep; //!< Tab separator after doc indicator
-} token_t;
+} scan_token_t;
 
 // #endregion
 
@@ -197,7 +197,7 @@ typedef struct {
     uint32_t line;
     uint32_t col;
 
-    token_t* tokens;
+    scan_token_t* tokens;
     size_t tok_cap;
     size_t tok_head;
     size_t tok_tail;
@@ -335,7 +335,7 @@ static inline size_t queue_count(scanner_t* s)
 static bool grow_tokens(scanner_t* s)
 {
     size_t new_cap = s->tok_cap ? s->tok_cap * 2 : TOKENS_INIT_CAP;
-    token_t* new_tokens = malloc(new_cap * sizeof(token_t));
+    scan_token_t* new_tokens = malloc(new_cap * sizeof(scan_token_t));
     if (!new_tokens) {
         set_synerr(s, SYNERR_NOMEM);
         return false;
@@ -354,7 +354,7 @@ static bool grow_tokens(scanner_t* s)
     return true;
 }
 
-static bool enqueue_token(scanner_t* s, token_t tok)
+static bool enqueue_token(scanner_t* s, scan_token_t tok)
 {
     size_t count = queue_count(s);
     if (s->tok_cap == 0 || count >= s->tok_cap - 1) {
@@ -366,7 +366,7 @@ static bool enqueue_token(scanner_t* s, token_t tok)
     return true;
 }
 
-static bool insert_token(scanner_t* s, size_t token_number, token_t tok)
+static bool insert_token(scanner_t* s, size_t token_number, scan_token_t tok)
 {
     size_t count = queue_count(s);
     if (s->tok_cap == 0 || count >= s->tok_cap - 1) {
@@ -392,7 +392,7 @@ static bool insert_token(scanner_t* s, size_t token_number, token_t tok)
     return true;
 }
 
-static token_t* queue_head(scanner_t* s)
+static scan_token_t* queue_head(scanner_t* s)
 {
     if (queue_count(s) == 0)
         return NULL;
@@ -402,7 +402,7 @@ static token_t* queue_head(scanner_t* s)
 static void skip_token(scanner_t* s)
 {
     if (queue_count(s) > 0) {
-        token_t* tok = &s->tokens[s->tok_head];
+        scan_token_t* tok = &s->tokens[s->tok_head];
         if (tok->type == TOK_STREAM_END) {
             SET_FLAG(s, SCAN_STREAM_END_PRODUCED);
         }
@@ -529,7 +529,7 @@ static bool grow_indents(scanner_t* s)
 }
 
 static bool roll_indent(scanner_t* s, int column, size_t number,
-    token_type_t type, uint32_t line, uint32_t col)
+    scan_token_type_t type, uint32_t line, uint32_t col)
 {
     if (s->flow_level)
         return true;
@@ -542,7 +542,7 @@ static bool roll_indent(scanner_t* s, int column, size_t number,
         s->indents[s->indent_top++] = s->indent;
         s->indent = column;
 
-        token_t tok = { .type = type, .span = { .off = (uint32_t)s->pos, .len = 0, .start_line = line, .start_col = col, .end_line = line, .end_col = col } };
+        scan_token_t tok = { .type = type, .span = { .off = (uint32_t)s->pos, .len = 0, .start_line = line, .start_col = col, .end_line = line, .end_col = col } };
         if (number == (size_t)-1) {
             return enqueue_token(s, tok);
         } else {
@@ -558,7 +558,7 @@ static bool unroll_indent(scanner_t* s, int column)
         return true;
 
     while (s->indent > column) {
-        token_t tok = { .type = TOK_BLOCK_END, .span = { .off = (uint32_t)s->pos, .len = 0, .start_line = s->line, .start_col = s->col, .end_line = s->line, .end_col = s->col } };
+        scan_token_t tok = { .type = TOK_BLOCK_END, .span = { .off = (uint32_t)s->pos, .len = 0, .start_line = s->line, .start_col = s->col, .end_line = s->line, .end_col = s->col } };
         if (!enqueue_token(s, tok))
             return false;
         if (s->indent_top > 0) {
@@ -655,7 +655,7 @@ static bool fetch_stream_start(scanner_t* s)
     s->simple_keys[s->simple_key_top++] = (simple_key_t) { 0 };
     SET_FLAG(s, SCAN_STREAM_START_PRODUCED);
 
-    token_t tok = { .type = TOK_STREAM_START, .span = { .off = (uint32_t)s->pos, .len = 0, .start_line = s->line, .start_col = s->col, .end_line = s->line, .end_col = s->col } };
+    scan_token_t tok = { .type = TOK_STREAM_START, .span = { .off = (uint32_t)s->pos, .len = 0, .start_line = s->line, .start_col = s->col, .end_line = s->line, .end_col = s->col } };
     return enqueue_token(s, tok);
 }
 
@@ -671,7 +671,7 @@ static bool fetch_stream_end(scanner_t* s)
         return false;
     CLEAR_FLAG(s, SCAN_SIMPLE_KEY_ALLOWED);
 
-    token_t tok = { .type = TOK_STREAM_END, .span = { .off = (uint32_t)s->pos, .len = 0, .start_line = s->line, .start_col = s->col, .end_line = s->line, .end_col = s->col } };
+    scan_token_t tok = { .type = TOK_STREAM_END, .span = { .off = (uint32_t)s->pos, .len = 0, .start_line = s->line, .start_col = s->col, .end_line = s->line, .end_col = s->col } };
     return enqueue_token(s, tok);
 }
 
@@ -796,7 +796,7 @@ static bool fetch_directive(scanner_t* s)
     return true;
 }
 
-static bool fetch_doc_indicator(scanner_t* s, token_type_t type)
+static bool fetch_doc_indicator(scanner_t* s, scan_token_type_t type)
 {
     if (!unroll_indent(s, -1))
         return false;
@@ -825,16 +825,16 @@ static bool fetch_doc_indicator(scanner_t* s, token_type_t type)
         SET_FLAG(s, SCAN_CONTENT_SEEN);
     }
 
-    token_t tok = { .type = type, .span = { .off = (uint32_t)(s->pos - 3), .len = 3, // --- or ...
-                                      .start_line = line,
-                                      .start_col = col,
-                                      .end_line = s->line,
-                                      .end_col = s->col },
+    scan_token_t tok = { .type = type, .span = { .off = (uint32_t)(s->pos - 3), .len = 3, // --- or ...
+                                           .start_line = line,
+                                           .start_col = col,
+                                           .end_line = s->line,
+                                           .end_col = s->col },
         .tab_sep = tab_sep };
     return enqueue_token(s, tok);
 }
 
-static bool fetch_flow_collection_start(scanner_t* s, token_type_t type)
+static bool fetch_flow_collection_start(scanner_t* s, scan_token_type_t type)
 {
     if (!save_simple_key(s))
         return false;
@@ -846,11 +846,11 @@ static bool fetch_flow_collection_start(scanner_t* s, token_type_t type)
     size_t start = s->pos;
     SKIP(s);
 
-    token_t tok = { .type = type, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
+    scan_token_t tok = { .type = type, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
     return enqueue_token(s, tok);
 }
 
-static bool fetch_flow_collection_end(scanner_t* s, token_type_t type)
+static bool fetch_flow_collection_end(scanner_t* s, scan_token_type_t type)
 {
     if (!remove_simple_key(s))
         return false;
@@ -870,7 +870,7 @@ static bool fetch_flow_collection_end(scanner_t* s, token_type_t type)
     if (s->flow_level)
         SET_FLAG(s, SCAN_JSON_KEY_PENDING);
 
-    token_t tok = { .type = type, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
+    scan_token_t tok = { .type = type, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
     return enqueue_token(s, tok);
 }
 
@@ -891,7 +891,7 @@ static bool fetch_flow_entry(scanner_t* s)
         return false;
     }
 
-    token_t tok = { .type = TOK_FLOW_ENTRY, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
+    scan_token_t tok = { .type = TOK_FLOW_ENTRY, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
     return enqueue_token(s, tok);
 }
 
@@ -926,7 +926,7 @@ static bool fetch_block_entry(scanner_t* s)
     size_t start = s->pos;
     SKIP(s);
 
-    token_t tok = { .type = TOK_BLOCK_ENTRY, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
+    scan_token_t tok = { .type = TOK_BLOCK_ENTRY, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
     return enqueue_token(s, tok);
 }
 
@@ -955,7 +955,7 @@ static bool fetch_key(scanner_t* s)
     size_t start = s->pos;
     SKIP(s);
 
-    token_t tok = { .type = TOK_KEY, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
+    scan_token_t tok = { .type = TOK_KEY, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
     return enqueue_token(s, tok);
 }
 
@@ -966,7 +966,7 @@ static bool fetch_value(scanner_t* s)
     if (s->simple_key_top > 0) {
         simple_key_t* sk = &s->simple_keys[s->simple_key_top - 1];
         if (sk->possible) {
-            token_t key_tok = { .type = TOK_KEY, .span = { .off = (uint32_t)sk->mark_index, .len = 0, .start_line = sk->mark_line, .start_col = sk->mark_col, .end_line = sk->mark_line, .end_col = sk->mark_col } };
+            scan_token_t key_tok = { .type = TOK_KEY, .span = { .off = (uint32_t)sk->mark_index, .len = 0, .start_line = sk->mark_line, .start_col = sk->mark_col, .end_line = sk->mark_line, .end_col = sk->mark_col } };
             if (!insert_token(s, sk->token_number, key_tok))
                 return false;
 
@@ -985,7 +985,7 @@ static bool fetch_value(scanner_t* s)
             size_t start = s->pos;
             SKIP(s);
 
-            token_t tok = { .type = TOK_VALUE, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
+            scan_token_t tok = { .type = TOK_VALUE, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
             return enqueue_token(s, tok);
         }
     }
@@ -1017,16 +1017,16 @@ static bool fetch_value(scanner_t* s)
     SKIP(s);
 
     if (need_implicit_key) {
-        token_t key_tok = { .type = TOK_KEY, .span = { .off = (uint32_t)start, .len = 0, .start_line = line, .start_col = col, .end_line = line, .end_col = col } };
+        scan_token_t key_tok = { .type = TOK_KEY, .span = { .off = (uint32_t)start, .len = 0, .start_line = line, .start_col = col, .end_line = line, .end_col = col } };
         if (!enqueue_token(s, key_tok))
             return false;
     }
 
-    token_t tok = { .type = TOK_VALUE, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
+    scan_token_t tok = { .type = TOK_VALUE, .span = { .off = (uint32_t)start, .len = 1, .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col } };
     return enqueue_token(s, tok);
 }
 
-static bool fetch_anchor(scanner_t* s, token_type_t type)
+static bool fetch_anchor(scanner_t* s, scan_token_type_t type)
 {
     if (!save_simple_key(s))
         return false;
@@ -1041,7 +1041,7 @@ static bool fetch_anchor(scanner_t* s, token_type_t type)
         SKIP(s);
     }
 
-    token_t tok = {
+    scan_token_t tok = {
         .type = type,
         .span = { .off = (uint32_t)start, .len = (uint32_t)(s->pos - start), .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col }
     };
@@ -1076,7 +1076,7 @@ static bool fetch_tag(scanner_t* s)
         }
     }
 
-    token_t tok = {
+    scan_token_t tok = {
         .type = TOK_TAG,
         .span = { .off = (uint32_t)start, .len = (uint32_t)(s->pos - start), .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col }
     };
@@ -1303,7 +1303,7 @@ static bool fetch_block_scalar(scanner_t* s, bool literal)
     // Content span now includes all content with internal newlines
     // trailing_breaks counts only empty lines AFTER the last content line
 
-    token_t tok = {
+    scan_token_t tok = {
         .type = TOK_SCALAR,
         .span = { .off = (uint32_t)content_start, .len = (uint32_t)(content_end - content_start), .start_line = start_line, .start_col = start_col, .end_line = s->line, .end_col = s->col },
         .style = literal ? CYAML_LITERAL : CYAML_FOLDED,
@@ -1409,7 +1409,7 @@ static bool fetch_flow_scalar(scanner_t* s, bool single)
     if (s->flow_level)
         SET_FLAG(s, SCAN_JSON_KEY_PENDING);
 
-    token_t tok = {
+    scan_token_t tok = {
         .type = TOK_SCALAR,
         .span = { .off = (uint32_t)(start + 1), .len = (uint32_t)(s->pos - start - 2), .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col },
         .style = single ? CYAML_SINGLE : CYAML_DOUBLE
@@ -1528,7 +1528,7 @@ static bool fetch_plain_scalar(scanner_t* s)
     while (end > start && CYAML_IS_WHITE(s->src[end - 1]))
         end--;
 
-    token_t tok = {
+    scan_token_t tok = {
         .type = TOK_SCALAR,
         .span = { .off = (uint32_t)start, .len = (uint32_t)(end - start), .start_line = line, .start_col = col, .end_line = s->line, .end_col = s->col },
         .style = CYAML_PLAIN
@@ -1647,7 +1647,7 @@ static bool fetch_more_tokens(scanner_t* s)
     return true;
 }
 
-static token_t* peek_token(scanner_t* s)
+static scan_token_t* peek_token(scanner_t* s)
 {
     if (!HAS_FLAG(s, SCAN_TOKEN_AVAILABLE) && !fetch_more_tokens(s))
         return NULL;
@@ -1716,9 +1716,9 @@ typedef struct {
     parse_state_t* states;
     size_t states_cap;
     size_t state_top;
-} parser_t;
+} yaml_parser_t;
 
-static bool grow_states(parser_t* p)
+static bool grow_states(yaml_parser_t* p)
 {
     size_t new_cap = p->states_cap ? p->states_cap * 2 : STATES_INIT_CAP;
     parse_state_t* new_states = realloc(p->states, new_cap * sizeof(*new_states));
@@ -1731,7 +1731,7 @@ static bool grow_states(parser_t* p)
     return true;
 }
 
-static bool push_state(parser_t* p, parse_state_t state)
+static bool push_state(yaml_parser_t* p, parse_state_t state)
 {
     if (p->state_top >= p->states_cap) {
         if (!grow_states(p))
@@ -1741,17 +1741,17 @@ static bool push_state(parser_t* p, parse_state_t state)
     return true;
 }
 
-static parse_state_t pop_state(parser_t* p)
+static parse_state_t pop_state(yaml_parser_t* p)
 {
     return (p->state_top > 0) ? p->states[--p->state_top] : PARSE_END;
 }
 
-static bool parse_event(parser_t* p, event_t* event);
-static bool parse_node(parser_t* p, event_t* event, bool block, bool indentless_seq);
+static bool parse_event(yaml_parser_t* p, event_t* event);
+static bool parse_node(yaml_parser_t* p, event_t* event, bool block, bool indentless_seq);
 
-static bool parse_stream_start(parser_t* p, event_t* event)
+static bool parse_stream_start(yaml_parser_t* p, event_t* event)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok || tok->type != TOK_STREAM_START) {
         set_synerr(p->scanner, SYNERR_EXPECTED_STREAM_START);
         return false;
@@ -1762,9 +1762,9 @@ static bool parse_stream_start(parser_t* p, event_t* event)
     return true;
 }
 
-static bool parse_doc_start(parser_t* p, event_t* event, bool implicit)
+static bool parse_doc_start(yaml_parser_t* p, event_t* event, bool implicit)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -1816,9 +1816,9 @@ static bool parse_doc_start(parser_t* p, event_t* event, bool implicit)
     return false;
 }
 
-static bool parse_doc_content(parser_t* p, event_t* event)
+static bool parse_doc_content(yaml_parser_t* p, event_t* event)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -1833,9 +1833,9 @@ static bool parse_doc_content(parser_t* p, event_t* event)
     return parse_node(p, event, true, false);
 }
 
-static bool parse_doc_end(parser_t* p, event_t* event)
+static bool parse_doc_end(yaml_parser_t* p, event_t* event)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -1851,9 +1851,9 @@ static bool parse_doc_end(parser_t* p, event_t* event)
     return true;
 }
 
-static bool parse_node(parser_t* p, event_t* event, bool block, bool indentless_seq)
+static bool parse_node(yaml_parser_t* p, event_t* event, bool block, bool indentless_seq)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -1881,7 +1881,7 @@ static bool parse_node(parser_t* p, event_t* event, bool block, bool indentless_
             tag = tok->span;
             // Validate tag handle is defined
             const char* t = p->scanner->src + tag.off;
-            if (tag.len > 0 && t[0] == '!' && t[tag.len - 1] != '>' && t[1] != '<') {
+            if (tag.len > 1 && t[0] == '!' && t[tag.len - 1] != '>' && t[1] != '<') {
                 // Find handle end (second ! in named handle like !prefix!)
                 size_t handle_len = 1; //! Default: primary handle !
                 if (tag.len > 1 && t[1] == '!') {
@@ -2010,9 +2010,9 @@ static bool parse_node(parser_t* p, event_t* event, bool block, bool indentless_
     return false;
 }
 
-static bool parse_block_seq_entry(parser_t* p, event_t* event, bool first)
+static bool parse_block_seq_entry(yaml_parser_t* p, event_t* event, bool first)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -2047,9 +2047,9 @@ static bool parse_block_seq_entry(parser_t* p, event_t* event, bool first)
     return false;
 }
 
-static bool parse_indentless_seq_entry(parser_t* p, event_t* event)
+static bool parse_indentless_seq_entry(yaml_parser_t* p, event_t* event)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -2077,10 +2077,10 @@ static bool parse_indentless_seq_entry(parser_t* p, event_t* event)
     return true;
 }
 
-static bool parse_block_map_key(parser_t* p, event_t* event, bool first)
+static bool parse_block_map_key(yaml_parser_t* p, event_t* event, bool first)
 {
     (void)first;
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -2123,9 +2123,9 @@ static bool parse_block_map_key(parser_t* p, event_t* event, bool first)
     return false;
 }
 
-static bool parse_block_map_value(parser_t* p, event_t* event)
+static bool parse_block_map_value(yaml_parser_t* p, event_t* event)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -2149,9 +2149,9 @@ static bool parse_block_map_value(parser_t* p, event_t* event)
     return true;
 }
 
-static bool parse_flow_seq_entry(parser_t* p, event_t* event, bool first)
+static bool parse_flow_seq_entry(yaml_parser_t* p, event_t* event, bool first)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -2200,9 +2200,9 @@ static bool parse_flow_seq_entry(parser_t* p, event_t* event, bool first)
     return true;
 }
 
-static bool parse_flow_seq_entry_map_key(parser_t* p, event_t* event)
+static bool parse_flow_seq_entry_map_key(yaml_parser_t* p, event_t* event)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -2219,9 +2219,9 @@ static bool parse_flow_seq_entry_map_key(parser_t* p, event_t* event)
     return true;
 }
 
-static bool parse_flow_seq_entry_map_value(parser_t* p, event_t* event)
+static bool parse_flow_seq_entry_map_value(yaml_parser_t* p, event_t* event)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -2245,16 +2245,16 @@ static bool parse_flow_seq_entry_map_value(parser_t* p, event_t* event)
     return true;
 }
 
-static bool parse_flow_seq_entry_map_end(parser_t* p, event_t* event)
+static bool parse_flow_seq_entry_map_end(yaml_parser_t* p, event_t* event)
 {
     p->state = PARSE_FLOW_SEQ_ENTRY;
     event->type = EVT_MAP_END;
     return true;
 }
 
-static bool parse_flow_map_key(parser_t* p, event_t* event, bool first)
+static bool parse_flow_map_key(yaml_parser_t* p, event_t* event, bool first)
 {
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -2303,10 +2303,10 @@ static bool parse_flow_map_key(parser_t* p, event_t* event, bool first)
     return true;
 }
 
-static bool parse_flow_map_value(parser_t* p, event_t* event, bool empty)
+static bool parse_flow_map_value(yaml_parser_t* p, event_t* event, bool empty)
 {
     (void)empty; //! No longer used - always check for TOK_VALUE
-    token_t* tok = peek_token(p->scanner);
+    scan_token_t* tok = peek_token(p->scanner);
     if (!tok)
         return false;
 
@@ -2336,7 +2336,7 @@ static bool parse_flow_map_value(parser_t* p, event_t* event, bool empty)
     return true;
 }
 
-static bool parse_event(parser_t* p, event_t* event)
+static bool parse_event(yaml_parser_t* p, event_t* event)
 {
     memset(event, 0, sizeof(*event));
 
@@ -2397,7 +2397,7 @@ static bool parse_event(parser_t* p, event_t* event)
 // #region Composer [3.2]
 
 typedef struct {
-    parser_t* parser;
+    yaml_parser_t* parser;
     cyaml_doc_t* doc;
     struct {
         cyaml_span_t name;
@@ -2406,8 +2406,21 @@ typedef struct {
     size_t anchor_count;
 } composer_t;
 
+typedef enum {
+    FRAME_SEQ,
+    FRAME_MAP_KEY,
+    FRAME_MAP_VAL
+} frame_state_t;
+
+typedef struct {
+    cyaml_node_t* node;
+    cyaml_node_t* pending_key;
+    frame_state_t state;
+} compose_frame_t;
+
+#define COMPOSE_STACK_INIT_CAP 32
+
 static cyaml_node_t* compose_node(composer_t* c);
-static cyaml_node_t* compose_mapping(composer_t* c, event_t* evt);
 
 static void register_anchor(composer_t* c, cyaml_span_t name, cyaml_node_t* node)
 {
@@ -2418,7 +2431,7 @@ static void register_anchor(composer_t* c, cyaml_span_t name, cyaml_node_t* node
     }
 }
 
-static cyaml_node_t* resolve_alias(composer_t* c, cyaml_span_t name)
+static cyaml_node_t* composer_resolve_alias(composer_t* c, cyaml_span_t name)
 {
     const char* src = cyaml_src(c->doc);
     // YAML 1.2 [7.1]: alias refers to most recent preceding node with same anchor
@@ -2462,164 +2475,76 @@ static cyaml_node_t* compose_scalar(composer_t* c, event_t* evt)
     return node;
 }
 
-static cyaml_node_t* compose_sequence(composer_t* c, event_t* evt)
+static bool seq_append(cyaml_node_t* seq, cyaml_node_t* item)
+{
+    if (seq->seq.count >= seq->seq.cap) {
+        uint32_t new_cap = seq->seq.cap ? seq->seq.cap * 2 : SEQ_INIT_CAP;
+        cyaml_node_t** items = realloc(seq->seq.items, (size_t)new_cap * sizeof(*items));
+        if (!items)
+            return false;
+        seq->seq.items = items;
+        seq->seq.cap = new_cap;
+    }
+    seq->seq.items[seq->seq.count++] = item;
+    return true;
+}
+
+static bool map_append(cyaml_node_t* map, cyaml_node_t* key, cyaml_node_t* val)
+{
+    if (map->map.count >= map->map.cap) {
+        uint32_t new_cap = map->map.cap ? map->map.cap * 2 : MAP_INIT_CAP;
+        cyaml_pair_t* pairs = realloc(map->map.pairs, (size_t)new_cap * sizeof(*pairs));
+        if (!pairs)
+            return false;
+        map->map.pairs = pairs;
+        map->map.cap = new_cap;
+    }
+    map->map.pairs[map->map.count].key = key;
+    map->map.pairs[map->map.count].val = val;
+    map->map.count++;
+    return true;
+}
+
+static cyaml_node_t* compose_alias(composer_t* c, event_t* evt)
+{
+    cyaml_node_t* node = cyaml_pool_alloc(c->doc);
+    if (node) {
+        node->type = CYAML_ALIAS;
+        node->anchor = evt->anchor;
+        node->alias.target = composer_resolve_alias(c, evt->anchor);
+    }
+    return node;
+}
+
+static cyaml_node_t* init_sequence(composer_t* c, event_t* evt)
 {
     cyaml_node_t* node = cyaml_pool_alloc(c->doc);
     if (!node)
         return NULL;
-
     node->type = CYAML_SEQ;
     node->style = (cyaml_style_t)(evt->block ? CYAML_BLOCK : CYAML_FLOW);
     node->anchor = evt->anchor;
     node->tag = evt->tag;
     node->span.start_line = evt->value.start_line;
     node->span.start_col = evt->value.start_col;
-
     if (evt->anchor.len > 0)
         register_anchor(c, evt->anchor, node);
-
-    while (true) {
-        event_t item_evt;
-        if (!parse_event(c->parser, &item_evt))
-            return NULL;
-        if (item_evt.type == EVT_SEQ_END) {
-            node->span.end_line = item_evt.value.end_line;
-            node->span.end_col = item_evt.value.end_col;
-            break;
-        }
-
-        cyaml_node_t* item = NULL;
-        switch (item_evt.type) {
-        case EVT_SCALAR:
-            item = compose_scalar(c, &item_evt);
-            break;
-        case EVT_SEQ_START:
-            item = compose_sequence(c, &item_evt);
-            break;
-        case EVT_MAP_START:
-            item = compose_mapping(c, &item_evt);
-            break;
-        case EVT_ALIAS:
-            item = cyaml_pool_alloc(c->doc);
-            if (item) {
-                item->type = CYAML_ALIAS;
-                item->anchor = item_evt.anchor;
-                item->alias.target = resolve_alias(c, item_evt.anchor);
-            }
-            break;
-        default:
-            break;
-        }
-        if (!item)
-            return NULL;
-
-        if (node->seq.count >= node->seq.cap) {
-            uint32_t new_cap = node->seq.cap ? node->seq.cap * 2 : SEQ_INIT_CAP;
-            cyaml_node_t** items = realloc(node->seq.items, (size_t)new_cap * sizeof(*items));
-            if (!items)
-                return NULL;
-            node->seq.items = items;
-            node->seq.cap = new_cap;
-        }
-        node->seq.items[node->seq.count++] = item;
-    }
-
     return node;
 }
 
-static cyaml_node_t* compose_mapping(composer_t* c, event_t* evt)
+static cyaml_node_t* init_mapping(composer_t* c, event_t* evt)
 {
     cyaml_node_t* node = cyaml_pool_alloc(c->doc);
     if (!node)
         return NULL;
-
     node->type = CYAML_MAP;
     node->style = (cyaml_style_t)(evt->block ? CYAML_BLOCK : CYAML_FLOW);
     node->anchor = evt->anchor;
     node->tag = evt->tag;
     node->span.start_line = evt->value.start_line;
     node->span.start_col = evt->value.start_col;
-
     if (evt->anchor.len > 0)
         register_anchor(c, evt->anchor, node);
-
-    while (true) {
-        event_t key_evt;
-        if (!parse_event(c->parser, &key_evt))
-            return NULL;
-        if (key_evt.type == EVT_MAP_END) {
-            node->span.end_line = key_evt.value.end_line;
-            node->span.end_col = key_evt.value.end_col;
-            break;
-        }
-
-        cyaml_node_t* key = NULL;
-        switch (key_evt.type) {
-        case EVT_SCALAR:
-            key = compose_scalar(c, &key_evt);
-            break;
-        case EVT_SEQ_START:
-            key = compose_sequence(c, &key_evt);
-            break;
-        case EVT_MAP_START:
-            key = compose_mapping(c, &key_evt);
-            break;
-        case EVT_ALIAS:
-            key = cyaml_pool_alloc(c->doc);
-            if (key) {
-                key->type = CYAML_ALIAS;
-                key->anchor = key_evt.anchor;
-                key->alias.target = resolve_alias(c, key_evt.anchor);
-            }
-            break;
-        default:
-            break;
-        }
-        if (!key)
-            return NULL;
-
-        event_t val_evt;
-        if (!parse_event(c->parser, &val_evt))
-            return NULL;
-
-        cyaml_node_t* val = NULL;
-        switch (val_evt.type) {
-        case EVT_SCALAR:
-            val = compose_scalar(c, &val_evt);
-            break;
-        case EVT_SEQ_START:
-            val = compose_sequence(c, &val_evt);
-            break;
-        case EVT_MAP_START:
-            val = compose_mapping(c, &val_evt);
-            break;
-        case EVT_ALIAS:
-            val = cyaml_pool_alloc(c->doc);
-            if (val) {
-                val->type = CYAML_ALIAS;
-                val->anchor = val_evt.anchor;
-                val->alias.target = resolve_alias(c, val_evt.anchor);
-            }
-            break;
-        default:
-            break;
-        }
-        if (!val)
-            return NULL;
-
-        if (node->map.count >= node->map.cap) {
-            uint32_t new_cap = node->map.cap ? node->map.cap * 2 : MAP_INIT_CAP;
-            cyaml_pair_t* pairs = realloc(node->map.pairs, (size_t)new_cap * sizeof(*pairs));
-            if (!pairs)
-                return NULL;
-            node->map.pairs = pairs;
-            node->map.cap = new_cap;
-        }
-        node->map.pairs[node->map.count].key = key;
-        node->map.pairs[node->map.count].val = val;
-        node->map.count++;
-    }
-
     return node;
 }
 
@@ -2629,30 +2554,128 @@ static cyaml_node_t* compose_node(composer_t* c)
     if (!parse_event(c->parser, &evt))
         return NULL;
 
-    switch (evt.type) {
-    case EVT_SCALAR:
+    if (evt.type == EVT_SCALAR)
         return compose_scalar(c, &evt);
-    case EVT_SEQ_START:
-        return compose_sequence(c, &evt);
-    case EVT_MAP_START:
-        return compose_mapping(c, &evt);
-    case EVT_ALIAS: {
-        cyaml_node_t* node = cyaml_pool_alloc(c->doc);
-        if (node) {
-            node->type = CYAML_ALIAS;
-            node->anchor = evt.anchor;
-            node->alias.target = resolve_alias(c, evt.anchor);
-        }
-        return node;
-    }
-    default:
+    if (evt.type == EVT_ALIAS)
+        return compose_alias(c, &evt);
+    if (evt.type != EVT_SEQ_START && evt.type != EVT_MAP_START)
         return NULL;
+
+    compose_frame_t* stack = NULL;
+    size_t stack_count = 0;
+    size_t stack_cap = 0;
+    cyaml_node_t* result = NULL;
+
+    cyaml_node_t* root = (evt.type == EVT_SEQ_START)
+        ? init_sequence(c, &evt)
+        : init_mapping(c, &evt);
+    if (!root)
+        goto cleanup;
+
+    stack = malloc(COMPOSE_STACK_INIT_CAP * sizeof(*stack));
+    if (!stack)
+        goto cleanup;
+    stack_cap = COMPOSE_STACK_INIT_CAP;
+    stack[0].node = root;
+    stack[0].pending_key = NULL;
+    stack[0].state = (evt.type == EVT_SEQ_START) ? FRAME_SEQ : FRAME_MAP_KEY;
+    stack_count = 1;
+
+    while (stack_count > 0) {
+        compose_frame_t* frame = &stack[stack_count - 1];
+
+        if (!parse_event(c->parser, &evt))
+            goto cleanup;
+
+        if (evt.type == EVT_SEQ_END || evt.type == EVT_MAP_END) {
+            frame->node->span.end_line = evt.value.end_line;
+            frame->node->span.end_col = evt.value.end_col;
+            cyaml_node_t* completed = frame->node;
+            stack_count--;
+
+            if (stack_count == 0) {
+                result = completed;
+                goto cleanup;
+            }
+
+            compose_frame_t* parent = &stack[stack_count - 1];
+            if (parent->state == FRAME_SEQ) {
+                if (!seq_append(parent->node, completed))
+                    goto cleanup;
+            } else if (parent->state == FRAME_MAP_KEY) {
+                parent->pending_key = completed;
+                parent->state = FRAME_MAP_VAL;
+            } else {
+                if (!map_append(parent->node, parent->pending_key, completed))
+                    goto cleanup;
+                parent->pending_key = NULL;
+                parent->state = FRAME_MAP_KEY;
+            }
+            continue;
+        }
+
+        cyaml_node_t* node = NULL;
+        bool is_container = false;
+
+        switch (evt.type) {
+        case EVT_SCALAR:
+            node = compose_scalar(c, &evt);
+            break;
+        case EVT_ALIAS:
+            node = compose_alias(c, &evt);
+            break;
+        case EVT_SEQ_START:
+            node = init_sequence(c, &evt);
+            is_container = true;
+            break;
+        case EVT_MAP_START:
+            node = init_mapping(c, &evt);
+            is_container = true;
+            break;
+        default:
+            goto cleanup;
+        }
+
+        if (!node)
+            goto cleanup;
+
+        if (is_container) {
+            if (stack_count >= stack_cap) {
+                size_t new_cap = stack_cap * 2;
+                compose_frame_t* new_stack = realloc(stack, new_cap * sizeof(*stack));
+                if (!new_stack)
+                    goto cleanup;
+                stack = new_stack;
+                stack_cap = new_cap;
+            }
+            stack[stack_count].node = node;
+            stack[stack_count].pending_key = NULL;
+            stack[stack_count].state = (evt.type == EVT_SEQ_START) ? FRAME_SEQ : FRAME_MAP_KEY;
+            stack_count++;
+        } else {
+            if (frame->state == FRAME_SEQ) {
+                if (!seq_append(frame->node, node))
+                    goto cleanup;
+            } else if (frame->state == FRAME_MAP_KEY) {
+                frame->pending_key = node;
+                frame->state = FRAME_MAP_VAL;
+            } else {
+                if (!map_append(frame->node, frame->pending_key, node))
+                    goto cleanup;
+                frame->pending_key = NULL;
+                frame->state = FRAME_MAP_KEY;
+            }
+        }
     }
+
+cleanup:
+    free(stack);
+    return result;
 }
 
 // #region Document Parsing
 
-static cyaml_doc_t* parse_document_internal(scanner_t* scanner, parser_t* parser, const cyaml_opts_t* opts)
+static cyaml_doc_t* parse_document_internal(scanner_t* scanner, yaml_parser_t* parser, const cyaml_opts_t* opts)
 {
     cyaml_doc_t* doc = calloc(1, sizeof(cyaml_doc_t));
     if (!doc) {
@@ -2732,7 +2755,7 @@ CYAML_API cyaml_doc_t* cyaml_parse(const char* src, size_t len,
         .src = src, .len = len, .pos = 0, .line = 1, 1, .tokens = NULL, .tok_cap = 0, .tok_head = 0, .tok_tail = 0, .tokens_parsed = 0, .indents = NULL, .indents_cap = 0, .indent_top = 0, .indent = -1, .simple_keys = NULL, .simple_keys_cap = 0, .simple_key_top = 0, .flow_level = 0, .flags = SCAN_SIMPLE_KEY_ALLOWED, .adjacent_value_allowed_at = (size_t)-1, .doc = NULL, .err = err, .spec = opts ? opts->spec : CYAML_SPEC_AUTO
     };
 
-    parser_t parser = { .scanner = &scanner, .state = PARSE_STREAM_START, .states = NULL, .states_cap = 0, .state_top = 0 };
+    yaml_parser_t parser = { .scanner = &scanner, .state = PARSE_STREAM_START, .states = NULL, .states_cap = 0, .state_top = 0 };
 
     if (err) {
         err->code = CYAML_OK;
@@ -2781,7 +2804,7 @@ CYAML_API cyaml_stream_t* cyaml_parse_stream(const char* src, size_t len,
         .src = src, .len = len, .pos = 0, .line = 1, 1, .tokens = NULL, .tok_cap = 0, .tok_head = 0, .tok_tail = 0, .tokens_parsed = 0, .indents = NULL, .indents_cap = 0, .indent_top = 0, .indent = -1, .simple_keys = NULL, .simple_keys_cap = 0, .simple_key_top = 0, .flow_level = 0, .flags = SCAN_SIMPLE_KEY_ALLOWED, .adjacent_value_allowed_at = (size_t)-1, .doc = NULL, .err = err, .spec = opts ? opts->spec : CYAML_SPEC_AUTO
     };
 
-    parser_t parser = { .scanner = &scanner, .state = PARSE_STREAM_START, .states = NULL, .states_cap = 0, .state_top = 0 };
+    yaml_parser_t parser = { .scanner = &scanner, .state = PARSE_STREAM_START, .states = NULL, .states_cap = 0, .state_top = 0 };
 
     if (err) {
         err->code = CYAML_OK;

@@ -1,87 +1,50 @@
-# AFL Fuzzing Makefile for cyaml
-#
-# Usage:
-#   make                  # Build all fuzzers with afl-clang-fast
-#   make CC=afl-gcc       # Build with afl-gcc instead
-#   make run-parse        # Run parser fuzzer
-#   make run-ypath        # Run ypath fuzzer
-#   make run-roundtrip    # Run roundtrip fuzzer
-#   make clean            # Clean build artifacts
+CC = afl-clang-fast
+CFLAGS = -O2 -g -I../src
+BUILD = build
 
-SRCDIR := ../src
-BUILDDIR := build
+all: $(BUILD)/fuzz_parse $(BUILD)/fuzz_emit $(BUILD)/fuzz_dump $(BUILD)/fuzz_json $(BUILD)/fuzz_json_parse $(BUILD)/fuzz_ypath
 
-# Default to afl-clang-fast (faster), fall back to afl-gcc
-AFL_CC ?= $(shell command -v afl-clang-fast 2>/dev/null || echo afl-gcc)
-CC ?= $(AFL_CC)
+$(BUILD):
+	mkdir -p $(BUILD)
 
-CFLAGS := -O2 -g -Wall -Wextra -I$(SRCDIR)
-LDFLAGS := -lm
+$(BUILD)/fuzz_parse: fuzz_parse.c | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ $<
 
-# Source files for cyaml library
-CYAML_SRCS := \
-	$(SRCDIR)/cyaml.c \
-	$(SRCDIR)/cyaml_utf8.c \
-	$(SRCDIR)/cyaml_parser.c \
-	$(SRCDIR)/cyaml_emitter.c \
-	$(SRCDIR)/cyaml_events.c \
-	$(SRCDIR)/cyaml_json.c \
-	$(SRCDIR)/cyaml_path.c \
-	$(SRCDIR)/cyaml_modify.c
+$(BUILD)/fuzz_emit: fuzz_emit.c | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ $<
 
-# Fuzzer targets
-FUZZERS := $(BUILDDIR)/fuzz_parse $(BUILDDIR)/fuzz_ypath $(BUILDDIR)/fuzz_roundtrip
+$(BUILD)/fuzz_dump: fuzz_dump.c | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ $<
 
-.PHONY: all clean run-parse run-ypath run-roundtrip corpus
+$(BUILD)/fuzz_json: fuzz_json.c | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ $<
 
-all: $(BUILDDIR) $(FUZZERS)
+$(BUILD)/fuzz_json_parse: fuzz_json_parse.c | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ $<
 
-$(BUILDDIR):
-	mkdir -p $(BUILDDIR)
+$(BUILD)/fuzz_ypath: fuzz_ypath.c | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ $<
 
-# Build fuzzers
-$(BUILDDIR)/fuzz_parse: fuzz_parse.c $(CYAML_SRCS) | $(BUILDDIR)
-	$(CC) $(CFLAGS) -o $@ $< $(CYAML_SRCS) $(LDFLAGS)
-
-$(BUILDDIR)/fuzz_ypath: fuzz_ypath.c $(CYAML_SRCS) | $(BUILDDIR)
-	$(CC) $(CFLAGS) -o $@ $< $(CYAML_SRCS) $(LDFLAGS)
-
-$(BUILDDIR)/fuzz_roundtrip: fuzz_roundtrip.c $(CYAML_SRCS) | $(BUILDDIR)
-	$(CC) $(CFLAGS) -o $@ $< $(CYAML_SRCS) $(LDFLAGS)
-
-# Create corpus directories
 corpus:
-	mkdir -p corpus/yaml corpus/ypath $(BUILDDIR)/findings
+	mkdir -p corpus/yaml corpus/json corpus/ypath
 
-# Run fuzzers (requires corpus to exist)
-run-parse: $(BUILDDIR)/fuzz_parse corpus
-	@echo "Starting parser fuzzer..."
-	@echo "Press Ctrl-C to stop"
-	afl-fuzz -i corpus/yaml -o $(BUILDDIR)/findings/parse -m none -- $(BUILDDIR)/fuzz_parse @@
+run-parse: $(BUILD)/fuzz_parse corpus
+	afl-fuzz -i corpus/yaml -o $(BUILD)/out/parse -- $(BUILD)/fuzz_parse
 
-run-ypath: $(BUILDDIR)/fuzz_ypath corpus
-	@echo "Starting ypath fuzzer..."
-	@echo "Press Ctrl-C to stop"
-	afl-fuzz -i corpus/ypath -o $(BUILDDIR)/findings/ypath -m none -- $(BUILDDIR)/fuzz_ypath @@
+run-emit: $(BUILD)/fuzz_emit corpus
+	afl-fuzz -i corpus/yaml -o $(BUILD)/out/emit -- $(BUILD)/fuzz_emit
 
-run-roundtrip: $(BUILDDIR)/fuzz_roundtrip corpus
-	@echo "Starting roundtrip fuzzer..."
-	@echo "Press Ctrl-C to stop"
-	afl-fuzz -i corpus/yaml -o $(BUILDDIR)/findings/roundtrip -m none -- $(BUILDDIR)/fuzz_roundtrip @@
+run-dump: $(BUILD)/fuzz_dump corpus
+	afl-fuzz -i corpus/yaml -o $(BUILD)/out/dump -- $(BUILD)/fuzz_dump
 
-# Build with sanitizers for crash analysis
-ASAN_FLAGS := -fsanitize=address,undefined -fno-omit-frame-pointer
+run-json: $(BUILD)/fuzz_json corpus
+	afl-fuzz -i corpus/yaml -o $(BUILD)/out/json -- $(BUILD)/fuzz_json
 
-$(BUILDDIR)/fuzz_parse_asan: fuzz_parse.c $(CYAML_SRCS) | $(BUILDDIR)
-	clang $(CFLAGS) $(ASAN_FLAGS) -o $@ $< $(CYAML_SRCS) $(LDFLAGS)
+run-json-parse: $(BUILD)/fuzz_json_parse corpus
+	afl-fuzz -i corpus/json -o $(BUILD)/out/json_parse -- $(BUILD)/fuzz_json_parse
 
-$(BUILDDIR)/fuzz_ypath_asan: fuzz_ypath.c $(CYAML_SRCS) | $(BUILDDIR)
-	clang $(CFLAGS) $(ASAN_FLAGS) -o $@ $< $(CYAML_SRCS) $(LDFLAGS)
-
-$(BUILDDIR)/fuzz_roundtrip_asan: fuzz_roundtrip.c $(CYAML_SRCS) | $(BUILDDIR)
-	clang $(CFLAGS) $(ASAN_FLAGS) -o $@ $< $(CYAML_SRCS) $(LDFLAGS)
-
-asan: $(BUILDDIR)/fuzz_parse_asan $(BUILDDIR)/fuzz_ypath_asan $(BUILDDIR)/fuzz_roundtrip_asan
+run-ypath: $(BUILD)/fuzz_ypath corpus
+	afl-fuzz -i corpus/ypath -o $(BUILD)/out/ypath -- $(BUILD)/fuzz_ypath
 
 clean:
-	rm -rf $(BUILDDIR)
+	rm -rf $(BUILD)

@@ -16,14 +16,14 @@ int main(void)
     __AFL_INIT();
     char *src = 0;
     unsigned char *buf = __AFL_FUZZ_TESTCASE_BUF;
-    static char yaml[] = "user:\n  name: Alice";
-    cyaml_doc_t *doc = cyaml_parse(yaml, sizeof(yaml) - 1, 0, 0);
-
     while (__AFL_LOOP(10000)) {
         int len = __AFL_FUZZ_TESTCASE_LEN;
-        src = realloc(src, len + 1);
+        src = realloc(src, len);
         memcpy(src, buf, len);
-        src[len] = 0;
-        cyaml_path(doc, src);
+        cyaml_doc_t *doc = cyaml_parse(src, len, 0, 0);
+        if (doc) {
+            free(cyaml_json(doc, 0, 0));
+            cyaml_free(doc);
+        }
     }
 }

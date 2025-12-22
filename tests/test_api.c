@@ -2241,9 +2241,43 @@ void test_cyaml_appendf(void)
     cyaml_free(doc);
 }
 
+void test_parse_tag_offbyone(void)
+{
+    char s[3] = ": !";
+    cyaml_error_t err;
+    cyaml_doc_t* doc = cyaml_parse(s, sizeof(s), NULL, &err);
+    if (doc)
+        cyaml_free(doc);
+    TEST_PASS();
+}
+
+void test_parse_deep_nesting(void)
+{
+    char nested[2048];
+    memset(nested, '{', sizeof(nested));
+    cyaml_error_t err;
+    cyaml_doc_t* doc = cyaml_parse(nested, sizeof(nested), NULL, &err);
+    if (doc)
+        cyaml_free(doc);
+    TEST_PASS();
+}
+
+void test_path_large_exponent(void)
+{
+    cyaml_doc_t* doc = cyaml_parse("x: 0", 4, NULL, NULL);
+    TEST_ASSERT_NOT_NULL(doc);
+    cyaml_path(doc, "1e4000000000");
+    cyaml_free(doc);
+    TEST_PASS();
+}
+
 int main(void)
 {
     UNITY_BEGIN();
+
+    RUN_TEST(test_parse_tag_offbyone);
+    RUN_TEST(test_parse_deep_nesting);
+    RUN_TEST(test_path_large_exponent);
 
     RUN_TEST(test_cyaml_version);
     RUN_TEST(test_cyaml_strerror);

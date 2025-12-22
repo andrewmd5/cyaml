@@ -10,7 +10,7 @@ typedef struct {
     bool indent;
 } event_buf_t;
 
-static bool event_grow(event_buf_t* e, size_t need)
+static inline bool event_grow(event_buf_t* e, size_t need)
 {
     if (e->len + need < e->cap)
         return true;
@@ -25,7 +25,7 @@ static bool event_grow(event_buf_t* e, size_t need)
     return true;
 }
 
-static bool event_char(event_buf_t* e, char c)
+static inline bool event_char(event_buf_t* e, char c)
 {
     if (!event_grow(e, 1))
         return false;
@@ -33,7 +33,7 @@ static bool event_char(event_buf_t* e, char c)
     return true;
 }
 
-static bool event_str(event_buf_t* e, const char* s)
+static inline bool event_str(event_buf_t* e, const char* s)
 {
     size_t slen = strlen(s);
     if (!event_grow(e, slen))
@@ -63,10 +63,10 @@ static bool event_str_pct_decode(event_buf_t* e, const char* s, size_t len)
     return true;
 }
 
-static bool event_indent(event_buf_t* e, int depth)
+static inline bool event_indent(event_buf_t* e, int depth)
 {
     if (!e->indent)
-        return true; // No indent in flat mode
+        return true;
     for (int i = 0; i < depth; i++) {
         if (!event_char(e, C_SP))
             return false;
@@ -280,7 +280,51 @@ static char* resolve_flow_scalar(const char* s, size_t len, cyaml_style_t style,
 
 // #region Node Events
 
-static bool event_node(event_buf_t* e, const cyaml_node_t* n, int depth);
+#define EVENT_STACK_INIT_CAP 32
+
+typedef enum {
+    EFRAME_VALUE,
+    EFRAME_SEQ_OPEN,
+    EFRAME_SEQ_ITEM,
+    EFRAME_SEQ_CLOSE,
+    EFRAME_MAP_OPEN,
+    EFRAME_MAP_PAIR,
+    EFRAME_MAP_VAL,
+    EFRAME_MAP_CLOSE
+} event_frame_state_t;
+
+typedef struct {
+    const cyaml_node_t* node;
+    uint32_t child_idx;
+    event_frame_state_t state;
+    int depth;
+} event_frame_t;
+
+#define EVENT_PUSH(stk, cnt, cap, nd, st, dp, on_fail)                     \
+    do {                                                                   \
+        if ((cnt) >= (cap)) {                                              \
+            size_t new_cap = (cap) * 2;                                    \
+            event_frame_t* tmp = realloc((stk), new_cap * sizeof(*(stk))); \
+            if (!tmp) {                                                    \
+                on_fail;                                                   \
+            }                                                              \
+            (stk) = tmp;                                                   \
+            (cap) = new_cap;                                               \
+        }                                                                  \
+        (stk)[(cnt)] = (event_frame_t) { (nd), 0, (st), (dp) };            \
+        (cnt)++;                                                           \
+    } while (0)
+
+#define EV_PUSH(nd, st, dp) \
+    EVENT_PUSH(stack, stack_count, stack_cap, nd, st, dp, { result = false; goto cleanup; })
+
+#define EV_FAIL(expr)       \
+    do {                    \
+        if (!(expr)) {      \
+            result = false; \
+            goto cleanup;   \
+        }                   \
+    } while (0)
 
 //! Output anchor if present
 static bool event_anchor(event_buf_t* e, const cyaml_node_t* n)
@@ -602,70 +646,6 @@ static bool event_scalar(event_buf_t* e, const cyaml_node_t* n, int depth)
     return event_char(e, C_LF);
 }
 
-static bool event_seq(event_buf_t* e, const cyaml_node_t* n, int depth)
-{
-    if (!event_indent(e, depth))
-        return false;
-    if (!event_str(e, "+SEQ"))
-        return false;
-
-    // Flow style indicator (before anchor/tag per test suite format)
-    if (n->style == (cyaml_style_t)CYAML_FLOW) {
-        if (!event_str(e, " []"))
-            return false;
-    }
-
-    if (!event_anchor(e, n))
-        return false;
-    if (!event_tag(e, n))
-        return false;
-
-    if (!event_char(e, C_LF))
-        return false;
-
-    for (uint32_t i = 0; i < n->seq.count; i++) {
-        if (!event_node(e, n->seq.items[i], depth + 1))
-            return false;
-    }
-
-    if (!event_indent(e, depth))
-        return false;
-    return event_str(e, "-SEQ\n");
-}
-
-static bool event_map(event_buf_t* e, const cyaml_node_t* n, int depth)
-{
-    if (!event_indent(e, depth))
-        return false;
-    if (!event_str(e, "+MAP"))
-        return false;
-
-    // Flow style indicator (before anchor/tag per test suite format)
-    if (n->style == (cyaml_style_t)CYAML_FLOW) {
-        if (!event_str(e, " {}"))
-            return false;
-    }
-
-    if (!event_anchor(e, n))
-        return false;
-    if (!event_tag(e, n))
-        return false;
-
-    if (!event_char(e, C_LF))
-        return false;
-
-    for (uint32_t i = 0; i < n->map.count; i++) {
-        if (!event_node(e, n->map.pairs[i].key, depth + 1))
-            return false;
-        if (!event_node(e, n->map.pairs[i].val, depth + 1))
-            return false;
-    }
-
-    if (!event_indent(e, depth))
-        return false;
-    return event_str(e, "-MAP\n");
-}
-
 static bool event_alias(event_buf_t* e, const cyaml_node_t* n, int depth)
 {
     if (!event_indent(e, depth))
@@ -673,7 +653,6 @@ static bool event_alias(event_buf_t* e, const cyaml_node_t* n, int depth)
     if (!event_str(e, "=ALI *"))
         return false;
 
-    // Alias name from anchor span
     if (n->anchor.len > 0) {
         const char* name = cyaml_src(e->doc) + n->anchor.off;
         if (!event_grow(e, n->anchor.len))
@@ -685,44 +664,154 @@ static bool event_alias(event_buf_t* e, const cyaml_node_t* n, int depth)
     return event_char(e, C_LF);
 }
 
-static bool event_node(event_buf_t* e, const cyaml_node_t* n, int depth)
+static bool event_seq_open(event_buf_t* e, const cyaml_node_t* n, int depth)
 {
-    if (!n || n->type == CYAML_NONE) {
-        // Empty node
-        if (!event_indent(e, depth))
+    if (!event_indent(e, depth))
+        return false;
+    if (!event_str(e, "+SEQ"))
+        return false;
+    if (n->style == (cyaml_style_t)CYAML_FLOW) {
+        if (!event_str(e, " []"))
+            return false;
+    }
+    if (!event_anchor(e, n))
+        return false;
+    if (!event_tag(e, n))
+        return false;
+    return event_char(e, C_LF);
+}
+
+static bool event_seq_close(event_buf_t* e, int depth)
+{
+    if (!event_indent(e, depth))
+        return false;
+    return event_str(e, "-SEQ\n");
+}
+
+static bool event_map_open(event_buf_t* e, const cyaml_node_t* n, int depth)
+{
+    if (!event_indent(e, depth))
+        return false;
+    if (!event_str(e, "+MAP"))
+        return false;
+    if (n->style == (cyaml_style_t)CYAML_FLOW) {
+        if (!event_str(e, " {}"))
+            return false;
+    }
+    if (!event_anchor(e, n))
+        return false;
+    if (!event_tag(e, n))
+        return false;
+    return event_char(e, C_LF);
+}
+
+static bool event_map_close(event_buf_t* e, int depth)
+{
+    if (!event_indent(e, depth))
+        return false;
+    return event_str(e, "-MAP\n");
+}
+
+static bool event_node(event_buf_t* e, const cyaml_node_t* root, int start_depth)
+{
+    if (!root || root->type == CYAML_NONE) {
+        if (!event_indent(e, start_depth))
             return false;
         return event_str(e, "=VAL :\n");
     }
 
-    switch (n->type) {
-    case CYAML_NULL:
-        // Null node may still have anchor/tag
-        if (!event_indent(e, depth))
-            return false;
-        if (!event_str(e, "=VAL"))
-            return false;
-        if (!event_anchor(e, n))
-            return false;
-        if (!event_tag(e, n))
-            return false;
-        return event_str(e, " :\n");
+    event_frame_t* stack = malloc(EVENT_STACK_INIT_CAP * sizeof(*stack));
+    if (!stack)
+        return false;
+    size_t stack_count = 0;
+    size_t stack_cap = EVENT_STACK_INIT_CAP;
+    bool result = true;
 
-    case CYAML_SCALAR:
-        return event_scalar(e, n, depth);
+    EV_PUSH(root, EFRAME_VALUE, start_depth);
 
-    case CYAML_SEQ:
-        return event_seq(e, n, depth);
+    while (stack_count > 0) {
+        event_frame_t* f = &stack[stack_count - 1];
+        const cyaml_node_t* n = f->node;
 
-    case CYAML_MAP:
-        return event_map(e, n, depth);
+        switch (f->state) {
+        case EFRAME_VALUE:
+            stack_count--;
+            if (!n || n->type == CYAML_NONE) {
+                EV_FAIL(event_indent(e, f->depth));
+                EV_FAIL(event_str(e, "=VAL :\n"));
+            } else {
+                switch (n->type) {
+                case CYAML_NULL:
+                    EV_FAIL(event_indent(e, f->depth));
+                    EV_FAIL(event_str(e, "=VAL"));
+                    EV_FAIL(event_anchor(e, n));
+                    EV_FAIL(event_tag(e, n));
+                    EV_FAIL(event_str(e, " :\n"));
+                    break;
+                case CYAML_SCALAR:
+                    EV_FAIL(event_scalar(e, n, f->depth));
+                    break;
+                case CYAML_SEQ:
+                    EV_PUSH(n, EFRAME_SEQ_OPEN, f->depth);
+                    break;
+                case CYAML_MAP:
+                    EV_PUSH(n, EFRAME_MAP_OPEN, f->depth);
+                    break;
+                case CYAML_ALIAS:
+                    EV_FAIL(event_alias(e, n, f->depth));
+                    break;
+                default:
+                    break;
+                }
+            }
+            break;
 
-    case CYAML_ALIAS:
-        return event_alias(e, n, depth);
+        case EFRAME_SEQ_OPEN:
+            EV_FAIL(event_seq_open(e, n, f->depth));
+            f->state = EFRAME_SEQ_ITEM;
+            break;
 
-    case CYAML_NONE:
-    default:
-        CYAML_UNREACHABLE("invalid node type in event_node");
+        case EFRAME_SEQ_ITEM:
+            if (f->child_idx >= n->seq.count)
+                f->state = EFRAME_SEQ_CLOSE;
+            else
+                EV_PUSH(n->seq.items[f->child_idx++], EFRAME_VALUE, f->depth + 1);
+            break;
+
+        case EFRAME_SEQ_CLOSE:
+            EV_FAIL(event_seq_close(e, f->depth));
+            stack_count--;
+            break;
+
+        case EFRAME_MAP_OPEN:
+            EV_FAIL(event_map_open(e, n, f->depth));
+            f->state = EFRAME_MAP_PAIR;
+            break;
+
+        case EFRAME_MAP_PAIR:
+            if (f->child_idx >= n->map.count) {
+                f->state = EFRAME_MAP_CLOSE;
+            } else {
+                f->state = EFRAME_MAP_VAL;
+                EV_PUSH(n->map.pairs[f->child_idx].key, EFRAME_VALUE, f->depth + 1);
+            }
+            break;
+
+        case EFRAME_MAP_VAL:
+            EV_PUSH(n->map.pairs[f->child_idx++].val, EFRAME_VALUE, f->depth + 1);
+            f->state = EFRAME_MAP_PAIR;
+            break;
+
+        case EFRAME_MAP_CLOSE:
+            EV_FAIL(event_map_close(e, f->depth));
+            stack_count--;
+            break;
+        }
     }
+
+cleanup:
+    free(stack);
+    return result;
 }
 
 // #endregion

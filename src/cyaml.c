@@ -953,71 +953,180 @@ CYAML_API bool cyaml_map_merge(cyaml_doc_t* doc, cyaml_node_t* dst, const cyaml_
     return true;
 }
 
-#define RESOLVE_MAX_DEPTH 64
+#define RESOLVE_STACK_INIT_CAP 32
+#define RESOLVE_VISITED_INIT_CAP 32
+
+typedef enum {
+    RFRAME_NODE,
+    RFRAME_SEQ,
+    RFRAME_MAP_KEY,
+    RFRAME_MAP_VAL
+} resolve_frame_state_t;
 
 typedef struct {
-    const cyaml_node_t* nodes[RESOLVE_MAX_DEPTH];
-    int depth;
-} resolve_ctx_t;
+    cyaml_node_t** node_ptr;
+    uint32_t child_idx;
+    resolve_frame_state_t state;
+} resolve_frame_t;
 
-static bool resolve_is_cyclic(resolve_ctx_t* ctx, const cyaml_node_t* n)
-{
-    for (int i = 0; i < ctx->depth; i++) {
-        if (ctx->nodes[i] == n)
-            return true;
-    }
-    return false;
-}
+#define RESOLVE_PUSH(stk, cnt, cap, ptr, st, on_fail)                        \
+    do {                                                                     \
+        if ((cnt) >= (cap)) {                                                \
+            size_t new_cap = (cap) * 2;                                      \
+            resolve_frame_t* tmp = realloc((stk), new_cap * sizeof(*(stk))); \
+            if (!tmp) {                                                      \
+                on_fail;                                                     \
+            }                                                                \
+            (stk) = tmp;                                                     \
+            (cap) = new_cap;                                                 \
+        }                                                                    \
+        (stk)[(cnt)].node_ptr = (ptr);                                       \
+        (stk)[(cnt)].child_idx = 0;                                          \
+        (stk)[(cnt)].state = (st);                                           \
+        (cnt)++;                                                             \
+    } while (0)
 
-static bool resolve_aliases_in_node(cyaml_doc_t* doc, cyaml_node_t** node_ptr, resolve_ctx_t* ctx)
-{
-    if (!node_ptr || !*node_ptr)
-        return true;
-    cyaml_node_t* node = *node_ptr;
-
-    if (node->type == CYAML_ALIAS) {
-        if (!node->alias.target)
-            return false;
-        if (ctx->depth >= RESOLVE_MAX_DEPTH || resolve_is_cyclic(ctx, node->alias.target)) {
-            return false;
-        }
-        ctx->nodes[ctx->depth++] = node->alias.target;
-        cyaml_node_t* copy = cyaml_node_copy(doc, doc, node->alias.target);
-        ctx->depth--;
-        if (!copy)
-            return false;
-        *node_ptr = copy;
-        return resolve_aliases_in_node(doc, node_ptr, ctx);
-    }
-
-    switch (node->type) {
-    case CYAML_SEQ:
-        for (uint32_t i = 0; i < node->seq.count; i++) {
-            if (!resolve_aliases_in_node(doc, &node->seq.items[i], ctx))
-                return false;
-        }
-        break;
-    case CYAML_MAP:
-        for (uint32_t i = 0; i < node->map.count; i++) {
-            if (!resolve_aliases_in_node(doc, &node->map.pairs[i].key, ctx))
-                return false;
-            if (!resolve_aliases_in_node(doc, &node->map.pairs[i].val, ctx))
-                return false;
-        }
-        break;
-    default:
-        break;
-    }
-
-    return true;
-}
+#define VISITED_PUSH(arr, cnt, cap, nd, on_fail)                                 \
+    do {                                                                         \
+        if ((cnt) >= (cap)) {                                                    \
+            size_t new_cap = (cap) * 2;                                          \
+            const cyaml_node_t** tmp = realloc((arr), new_cap * sizeof(*(arr))); \
+            if (!tmp) {                                                          \
+                on_fail;                                                         \
+            }                                                                    \
+            (arr) = tmp;                                                         \
+            (cap) = new_cap;                                                     \
+        }                                                                        \
+        (arr)[(cnt)++] = (nd);                                                   \
+    } while (0)
 
 CYAML_API bool cyaml_resolve_aliases(cyaml_doc_t* doc)
 {
-    if (!doc)
+    if (!doc || !doc->root)
+        return doc != NULL;
+
+    resolve_frame_t* stack = malloc(RESOLVE_STACK_INIT_CAP * sizeof(*stack));
+    if (!stack)
         return false;
-    resolve_ctx_t ctx = { .depth = 0 };
-    return resolve_aliases_in_node(doc, &doc->root, &ctx);
+    size_t stack_count = 0;
+    size_t stack_cap = RESOLVE_STACK_INIT_CAP;
+
+    const cyaml_node_t** visited = malloc(RESOLVE_VISITED_INIT_CAP * sizeof(*visited));
+    if (!visited) {
+        free(stack);
+        return false;
+    }
+    size_t visited_count = 0;
+    size_t visited_cap = RESOLVE_VISITED_INIT_CAP;
+
+    bool result = true;
+
+#define RPUSH(ptr, st) RESOLVE_PUSH(stack, stack_count, stack_cap, ptr, st, { result = false; goto cleanup; })
+#define VPUSH(nd) VISITED_PUSH(visited, visited_count, visited_cap, nd, { result = false; goto cleanup; })
+
+    RPUSH(&doc->root, RFRAME_NODE);
+
+    while (stack_count > 0) {
+        resolve_frame_t* f = &stack[stack_count - 1];
+
+        switch (f->state) {
+        case RFRAME_NODE: {
+            if (!f->node_ptr || !*f->node_ptr) {
+                stack_count--;
+                break;
+            }
+            cyaml_node_t* node = *f->node_ptr;
+
+            if (node->type == CYAML_ALIAS) {
+                if (!node->alias.target) {
+                    result = false;
+                    goto cleanup;
+                }
+                bool is_cyclic = false;
+                for (size_t i = 0; i < visited_count; i++) {
+                    if (visited[i] == node->alias.target) {
+                        is_cyclic = true;
+                        break;
+                    }
+                }
+                if (is_cyclic) {
+                    result = false;
+                    goto cleanup;
+                }
+                VPUSH(node->alias.target);
+                cyaml_node_t* copy = cyaml_node_copy(doc, doc, node->alias.target);
+                visited_count--;
+                if (!copy) {
+                    result = false;
+                    goto cleanup;
+                }
+                *f->node_ptr = copy;
+                break;
+            }
+
+            switch (node->type) {
+            case CYAML_SEQ:
+                if (node->seq.count > 0) {
+                    f->state = RFRAME_SEQ;
+                    f->child_idx = 0;
+                } else {
+                    stack_count--;
+                }
+                break;
+            case CYAML_MAP:
+                if (node->map.count > 0) {
+                    f->state = RFRAME_MAP_KEY;
+                    f->child_idx = 0;
+                } else {
+                    stack_count--;
+                }
+                break;
+            default:
+                stack_count--;
+                break;
+            }
+            break;
+        }
+
+        case RFRAME_SEQ: {
+            cyaml_node_t* node = *f->node_ptr;
+            if (f->child_idx >= node->seq.count) {
+                stack_count--;
+            } else {
+                uint32_t idx = f->child_idx++;
+                RPUSH(&node->seq.items[idx], RFRAME_NODE);
+            }
+            break;
+        }
+
+        case RFRAME_MAP_KEY: {
+            cyaml_node_t* node = *f->node_ptr;
+            if (f->child_idx >= node->map.count) {
+                stack_count--;
+            } else {
+                f->state = RFRAME_MAP_VAL;
+                RPUSH(&node->map.pairs[f->child_idx].key, RFRAME_NODE);
+            }
+            break;
+        }
+
+        case RFRAME_MAP_VAL: {
+            cyaml_node_t* node = *f->node_ptr;
+            f->state = RFRAME_MAP_KEY;
+            uint32_t idx = f->child_idx++;
+            RPUSH(&node->map.pairs[idx].val, RFRAME_NODE);
+            break;
+        }
+        }
+    }
+
+#undef RPUSH
+#undef VPUSH
+
+cleanup:
+    free(stack);
+    free(visited);
+    return result;
 }
 
 // #endregion
@@ -1072,32 +1181,92 @@ CYAML_API bool cyaml_map_sort(const cyaml_doc_t* doc, cyaml_node_t* map, cyaml_k
     return true;
 }
 
+#define SORT_STACK_INIT_CAP 32
+
+typedef struct {
+    cyaml_node_t* node;
+    uint32_t child_idx;
+    bool sorted;
+} sort_frame_t;
+
+#define SORT_PUSH(stk, cnt, cap, nd, on_fail)                             \
+    do {                                                                  \
+        if ((cnt) >= (cap)) {                                             \
+            size_t new_cap = (cap) * 2;                                   \
+            sort_frame_t* tmp = realloc((stk), new_cap * sizeof(*(stk))); \
+            if (!tmp) {                                                   \
+                on_fail;                                                  \
+            }                                                             \
+            (stk) = tmp;                                                  \
+            (cap) = new_cap;                                              \
+        }                                                                 \
+        (stk)[(cnt)].node = (nd);                                         \
+        (stk)[(cnt)].child_idx = 0;                                       \
+        (stk)[(cnt)].sorted = false;                                      \
+        (cnt)++;                                                          \
+    } while (0)
+
 CYAML_API bool cyaml_map_sort_recursive(const cyaml_doc_t* doc, cyaml_node_t* node,
     cyaml_key_cmp_t cmp)
 {
     if (!node)
         return true;
 
-    switch (node->type) {
-    case CYAML_MAP:
-        if (!cyaml_map_sort(doc, node, cmp))
-            return false;
-        for (uint32_t i = 0; i < node->map.count; i++) {
-            if (!cyaml_map_sort_recursive(doc, node->map.pairs[i].val, cmp))
-                return false;
+    sort_frame_t* stack = malloc(SORT_STACK_INIT_CAP * sizeof(*stack));
+    if (!stack)
+        return false;
+    size_t stack_count = 0;
+    size_t stack_cap = SORT_STACK_INIT_CAP;
+    bool result = true;
+
+#define SPUSH(nd) SORT_PUSH(stack, stack_count, stack_cap, nd, { result = false; goto cleanup; })
+
+    SPUSH(node);
+
+    while (stack_count > 0) {
+        sort_frame_t* f = &stack[stack_count - 1];
+        cyaml_node_t* n = f->node;
+
+        if (!n) {
+            stack_count--;
+            continue;
         }
-        break;
-    case CYAML_SEQ:
-        for (uint32_t i = 0; i < node->seq.count; i++) {
-            if (!cyaml_map_sort_recursive(doc, node->seq.items[i], cmp))
-                return false;
+
+        switch (n->type) {
+        case CYAML_MAP:
+            if (!f->sorted) {
+                if (!cyaml_map_sort(doc, n, cmp)) {
+                    result = false;
+                    goto cleanup;
+                }
+                f->sorted = true;
+            }
+            if (f->child_idx >= n->map.count) {
+                stack_count--;
+            } else {
+                uint32_t idx = f->child_idx++;
+                SPUSH(n->map.pairs[idx].val);
+            }
+            break;
+        case CYAML_SEQ:
+            if (f->child_idx >= n->seq.count) {
+                stack_count--;
+            } else {
+                uint32_t idx = f->child_idx++;
+                SPUSH(n->seq.items[idx]);
+            }
+            break;
+        default:
+            stack_count--;
+            break;
         }
-        break;
-    default:
-        break;
     }
 
-    return true;
+#undef SPUSH
+
+cleanup:
+    free(stack);
+    return result;
 }
 
 // #endregion
