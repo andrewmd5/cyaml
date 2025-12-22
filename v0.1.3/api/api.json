@@ -1,0 +1,2172 @@
+{
+  "version": "v0.1.3",
+  "regions": [
+    {
+      "name": "Types",
+      "functions": [],
+      "enums": [
+        {
+          "name": "cyaml_type_t",
+          "values": [
+            {
+              "name": "CYAML_NONE",
+              "value": "0",
+              "doc": "Invalid/uninitialized"
+            },
+            {
+              "name": "CYAML_NULL",
+              "value": null,
+              "doc": "Null value (~, null)"
+            },
+            {
+              "name": "CYAML_SCALAR",
+              "value": null,
+              "doc": "Scalar value"
+            },
+            {
+              "name": "CYAML_SEQ",
+              "value": null,
+              "doc": "Sequence (array)"
+            },
+            {
+              "name": "CYAML_MAP",
+              "value": null,
+              "doc": "Mapping (object)"
+            },
+            {
+              "name": "CYAML_ALIAS",
+              "value": null,
+              "doc": "Alias (*anchor)"
+            }
+          ],
+          "doc": "Node types"
+        },
+        {
+          "name": "cyaml_style_t",
+          "values": [
+            {
+              "name": "CYAML_PLAIN",
+              "value": "0",
+              "doc": "Plain (unquoted)"
+            },
+            {
+              "name": "CYAML_SINGLE",
+              "value": null,
+              "doc": "Single-quoted"
+            },
+            {
+              "name": "CYAML_DOUBLE",
+              "value": null,
+              "doc": "Double-quoted"
+            },
+            {
+              "name": "CYAML_LITERAL",
+              "value": null,
+              "doc": "Literal block (|)"
+            },
+            {
+              "name": "CYAML_FOLDED",
+              "value": null,
+              "doc": "Folded block (>)"
+            }
+          ],
+          "doc": "Scalar styles"
+        },
+        {
+          "name": "cyaml_coll_t",
+          "values": [
+            {
+              "name": "CYAML_BLOCK",
+              "value": "0",
+              "doc": "Block style (indented)"
+            },
+            {
+              "name": "CYAML_FLOW",
+              "value": null,
+              "doc": "Flow style ({}, [])"
+            }
+          ],
+          "doc": "Collection styles"
+        },
+        {
+          "name": "cyaml_chomp_t",
+          "values": [
+            {
+              "name": "CYAML_CLIP",
+              "value": "0",
+              "doc": "Default: single trailing newline"
+            },
+            {
+              "name": "CYAML_STRIP",
+              "value": null,
+              "doc": "Strip all trailing newlines (-)"
+            },
+            {
+              "name": "CYAML_KEEP",
+              "value": null,
+              "doc": "Keep all trailing newlines (+)"
+            }
+          ],
+          "doc": "Chomping for block scalars"
+        },
+        {
+          "name": "cyaml_spec_t",
+          "values": [
+            {
+              "name": "CYAML_SPEC_AUTO",
+              "value": "0",
+              "doc": "Auto-detect from %YAML directive (default: 1.2)"
+            },
+            {
+              "name": "CYAML_SPEC_1_1",
+              "value": null,
+              "doc": "YAML 1.1"
+            },
+            {
+              "name": "CYAML_SPEC_1_2",
+              "value": null,
+              "doc": "YAML 1.2"
+            },
+            {
+              "name": "CYAML_SPEC_1_3",
+              "value": null,
+              "doc": "YAML 1.3"
+            }
+          ],
+          "doc": "YAML specification version"
+        },
+        {
+          "name": "cyaml_scalar_flags_t",
+          "values": [
+            {
+              "name": "CYAML_SCALAR_NONE",
+              "value": "0",
+              "doc": ""
+            },
+            {
+              "name": "CYAML_SCALAR_EXPLICIT_EMPTY",
+              "value": "1 << 0",
+              "doc": "Empty value that should NOT become null"
+            }
+          ],
+          "doc": "Scalar flags (bitmask)"
+        },
+        {
+          "name": "cyaml_scalar_kind_t",
+          "values": [
+            {
+              "name": "CYAML_KIND_NULL",
+              "value": null,
+              "doc": "null, ~, Null, NULL, or empty"
+            },
+            {
+              "name": "CYAML_KIND_BOOL",
+              "value": null,
+              "doc": "true, false (case-insensitive)"
+            },
+            {
+              "name": "CYAML_KIND_INT",
+              "value": null,
+              "doc": "Integer (decimal, 0x hex, 0o octal)"
+            },
+            {
+              "name": "CYAML_KIND_FLOAT",
+              "value": null,
+              "doc": "Float (includes .inf, .nan)"
+            },
+            {
+              "name": "CYAML_KIND_STRING",
+              "value": null,
+              "doc": "Unrecognized (treat as string)"
+            }
+          ],
+          "doc": "Inferred scalar value kind (YAML Core Schema)"
+        }
+      ],
+      "structs": []
+    },
+    {
+      "name": "Span (Atom)",
+      "functions": [],
+      "enums": [],
+      "structs": [
+        {
+          "name": "cyaml_span_t",
+          "fields": [
+            {
+              "name": "off",
+              "type": "uint32_t",
+              "doc": "Byte offset into source"
+            },
+            {
+              "name": "len",
+              "type": "uint32_t",
+              "doc": "Length in bytes"
+            },
+            {
+              "name": "start_line",
+              "type": "uint32_t",
+              "doc": "1-based start line"
+            },
+            {
+              "name": "start_col",
+              "type": "uint32_t",
+              "doc": "1-based start column"
+            },
+            {
+              "name": "end_line",
+              "type": "uint32_t",
+              "doc": "1-based end line"
+            },
+            {
+              "name": "end_col",
+              "type": "uint32_t",
+              "doc": "1-based end column"
+            }
+          ],
+          "doc": "Span - a reference into source data with location info This is the core building block: no string copying during parse"
+        }
+      ]
+    },
+    {
+      "name": "Node",
+      "functions": [],
+      "enums": [],
+      "structs": [
+        {
+          "name": "cyaml_pair_t",
+          "fields": [
+            {
+              "name": "key",
+              "type": "cyaml_node_t*",
+              "doc": ""
+            },
+            {
+              "name": "val",
+              "type": "cyaml_node_t*",
+              "doc": ""
+            }
+          ],
+          "doc": "Key-value pair for mappings"
+        }
+      ]
+    },
+    {
+      "name": "Document",
+      "functions": [],
+      "enums": [
+        {
+          "name": "cyaml_doc_flags_t",
+          "values": [
+            {
+              "name": "CYAML_DOC_START",
+              "value": "1 << 0",
+              "doc": "Had explicit '---' marker"
+            },
+            {
+              "name": "CYAML_DOC_END",
+              "value": "1 << 1",
+              "doc": "Had explicit '...' marker"
+            },
+            {
+              "name": "CYAML_HAS_DIRECTIVE",
+              "value": "1 << 2",
+              "doc": "Had any directive (%YAML, %TAG, or reserved)"
+            },
+            {
+              "name": "CYAML_DOC_TAB_SEP",
+              "value": "1 << 3",
+              "doc": "Tab separator after '---' marker"
+            }
+          ],
+          "doc": "Document flags"
+        },
+        {
+          "name": "cyaml_mode_t",
+          "values": [
+            {
+              "name": "CYAML_PARSING",
+              "value": null,
+              "doc": "Parsed document (source borrowed)"
+            },
+            {
+              "name": "CYAML_BUILDING",
+              "value": null,
+              "doc": "Built document (source owned)"
+            }
+          ],
+          "doc": "Document mode"
+        }
+      ],
+      "structs": [
+        {
+          "name": "cyaml_pool_t",
+          "fields": [
+            {
+              "name": "chunks",
+              "type": "cyaml_node_t**",
+              "doc": "Array of chunk pointers (never moved once allocated)"
+            },
+            {
+              "name": "chunk_count",
+              "type": "uint32_t",
+              "doc": "Number of allocated chunks"
+            },
+            {
+              "name": "chunk_cap",
+              "type": "uint32_t",
+              "doc": "Capacity of chunks array"
+            },
+            {
+              "name": "count",
+              "type": "uint32_t",
+              "doc": "Total nodes allocated"
+            }
+          ],
+          "doc": ""
+        },
+        {
+          "name": "cyaml_tag_directive_t",
+          "fields": [
+            {
+              "name": "handle",
+              "type": "cyaml_span_t",
+              "doc": "Tag handle (e.g., \"!\" or \"!!\" or \"!yaml!\")"
+            },
+            {
+              "name": "prefix",
+              "type": "cyaml_span_t",
+              "doc": "Tag prefix (e.g., \"tag:yaml.org,2002:\")"
+            }
+          ],
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "Stream",
+      "functions": [],
+      "enums": [],
+      "structs": [
+        {
+          "name": "cyaml_stream_t",
+          "fields": [
+            {
+              "name": "src",
+              "type": "const char*",
+              "doc": "Source buffer (borrowed, must outlive stream)"
+            },
+            {
+              "name": "src_len",
+              "type": "uint32_t",
+              "doc": "Source length"
+            },
+            {
+              "name": "docs",
+              "type": "cyaml_doc_t**",
+              "doc": "Array of documents"
+            },
+            {
+              "name": "count",
+              "type": "uint32_t",
+              "doc": "Number of documents"
+            },
+            {
+              "name": "cap",
+              "type": "uint32_t",
+              "doc": "Capacity"
+            }
+          ],
+          "doc": "[9.2] Stream - contains one or more documents l-yaml-stream ::= l-document-prefix* l-any-document? ... Source is always borrowed - caller manages lifetime"
+        }
+      ]
+    },
+    {
+      "name": "Error",
+      "functions": [],
+      "enums": [
+        {
+          "name": "cyaml_err_t",
+          "values": [
+            {
+              "name": "CYAML_OK",
+              "value": "0",
+              "doc": ""
+            },
+            {
+              "name": "CYAML_ERR_NOMEM",
+              "value": null,
+              "doc": ""
+            },
+            {
+              "name": "CYAML_ERR_SYNTAX",
+              "value": null,
+              "doc": ""
+            },
+            {
+              "name": "CYAML_ERR_EOF",
+              "value": null,
+              "doc": ""
+            },
+            {
+              "name": "CYAML_ERR_INDENT",
+              "value": null,
+              "doc": ""
+            },
+            {
+              "name": "CYAML_ERR_ESCAPE",
+              "value": null,
+              "doc": ""
+            },
+            {
+              "name": "CYAML_ERR_ANCHOR",
+              "value": null,
+              "doc": ""
+            },
+            {
+              "name": "CYAML_ERR_ALIAS",
+              "value": null,
+              "doc": ""
+            },
+            {
+              "name": "CYAML_ERR_TAG",
+              "value": null,
+              "doc": ""
+            },
+            {
+              "name": "CYAML_ERR_DUP_KEY",
+              "value": null,
+              "doc": ""
+            },
+            {
+              "name": "CYAML_ERR_IO",
+              "value": null,
+              "doc": ""
+            }
+          ],
+          "doc": ""
+        }
+      ],
+      "structs": [
+        {
+          "name": "cyaml_error_t",
+          "fields": [
+            {
+              "name": "code",
+              "type": "cyaml_err_t",
+              "doc": ""
+            },
+            {
+              "name": "span",
+              "type": "cyaml_span_t",
+              "doc": "Error location"
+            }
+          ],
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "Parse Options",
+      "functions": [],
+      "enums": [],
+      "structs": [
+        {
+          "name": "cyaml_opts_t",
+          "fields": [
+            {
+              "name": "dup_keys",
+              "type": "bool",
+              "doc": "Allow duplicate keys (default: false)"
+            },
+            {
+              "name": "preserve_comments",
+              "type": "bool",
+              "doc": "Preserve comments (default: false)"
+            },
+            {
+              "name": "max_depth",
+              "type": "uint32_t",
+              "doc": "Max nesting depth (0 = unlimited)"
+            },
+            {
+              "name": "max_size",
+              "type": "uint32_t",
+              "doc": "Max source size (0 = unlimited)"
+            },
+            {
+              "name": "spec",
+              "type": "cyaml_spec_t",
+              "doc": "YAML spec version (default: auto-detect)"
+            }
+          ],
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "Emit Options",
+      "functions": [],
+      "enums": [],
+      "structs": [
+        {
+          "name": "cyaml_emit_opts_t",
+          "fields": [
+            {
+              "name": "indent",
+              "type": "uint8_t",
+              "doc": "Indentation (default: 2)"
+            },
+            {
+              "name": "width",
+              "type": "uint8_t",
+              "doc": "Line width, 0 = no wrap (default: 80)"
+            },
+            {
+              "name": "doc_start",
+              "type": "bool",
+              "doc": "Emit --- (default: false)"
+            },
+            {
+              "name": "doc_end",
+              "type": "bool",
+              "doc": "Emit ... (default: false)"
+            },
+            {
+              "name": "preserve_comments",
+              "type": "bool",
+              "doc": "Emit comments if available (default: false)"
+            },
+            {
+              "name": "preserve_style",
+              "type": "bool",
+              "doc": "Preserve original node styles (default: false = convert flow to block)"
+            },
+            {
+              "name": "style",
+              "type": "cyaml_style_t",
+              "doc": "Default scalar style"
+            },
+            {
+              "name": "coll",
+              "type": "cyaml_coll_t",
+              "doc": "Default collection style"
+            }
+          ],
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "name": "Parsing",
+      "functions": [
+        {
+          "name": "cyaml_parse",
+          "return_type": "cyaml_doc_t *",
+          "params": [
+            {
+              "name": "src",
+              "type": "const char*",
+              "doc": "Source buffer (must outlive returned doc)"
+            },
+            {
+              "name": "len",
+              "type": "size_t",
+              "doc": "Source length"
+            },
+            {
+              "name": "opts",
+              "type": "const cyaml_opts_t*",
+              "doc": "Parse options (NULL for defaults)"
+            },
+            {
+              "name": "err",
+              "type": "cyaml_error_t*",
+              "doc": "Error output (NULL to ignore)"
+            }
+          ],
+          "summary": "Parse first document from YAML string",
+          "return_doc": "Document or NULL on error",
+          "examples": []
+        },
+        {
+          "name": "cyaml_free",
+          "return_type": "void",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to free (NULL safe)"
+            }
+          ],
+          "summary": "Free document and all nodes (does not free source buffer)",
+          "return_doc": "",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Stream Parsing",
+      "functions": [
+        {
+          "name": "cyaml_parse_stream",
+          "return_type": "cyaml_stream_t *",
+          "params": [
+            {
+              "name": "src",
+              "type": "const char*",
+              "doc": "Source buffer (must outlive returned stream)"
+            },
+            {
+              "name": "len",
+              "type": "size_t",
+              "doc": "Source length"
+            },
+            {
+              "name": "opts",
+              "type": "const cyaml_opts_t*",
+              "doc": "Parse options (NULL for defaults)"
+            },
+            {
+              "name": "err",
+              "type": "cyaml_error_t*",
+              "doc": "Error output (NULL to ignore)"
+            }
+          ],
+          "summary": "Parse YAML stream containing multiple documents",
+          "return_doc": "Stream or NULL on error",
+          "examples": []
+        },
+        {
+          "name": "cyaml_stream_free",
+          "return_type": "void",
+          "params": [
+            {
+              "name": "stream",
+              "type": "cyaml_stream_t*",
+              "doc": "Stream to free (NULL safe)"
+            }
+          ],
+          "summary": "Free stream and all documents (does not free source buffer)",
+          "return_doc": "",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Span Utilities",
+      "functions": [
+        {
+          "name": "cyaml_span_dup",
+          "return_type": "char *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the span"
+            },
+            {
+              "name": "s",
+              "type": "cyaml_span_t",
+              "doc": "Span to duplicate"
+            }
+          ],
+          "summary": "Duplicate span as null-terminated string",
+          "return_doc": "Allocated string (caller must free) or NULL",
+          "examples": []
+        },
+        {
+          "name": "cyaml_scalar_str",
+          "return_type": "char *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "n",
+              "type": "const cyaml_node_t*",
+              "doc": "Scalar node"
+            }
+          ],
+          "summary": "Get scalar value as string with all YAML processing applied Handles escape sequences, line folding, and block scalar indent stripping.",
+          "return_doc": "Allocated string (caller must free) or NULL",
+          "examples": []
+        },
+        {
+          "name": "cyaml_span_eq",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the span"
+            },
+            {
+              "name": "s",
+              "type": "cyaml_span_t",
+              "doc": "Span to compare"
+            },
+            {
+              "name": "str",
+              "type": "const char*",
+              "doc": "String to compare against"
+            }
+          ],
+          "summary": "Compare span to string (case-sensitive)",
+          "return_doc": "true if equal",
+          "examples": []
+        },
+        {
+          "name": "cyaml_span_ieq",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the span"
+            },
+            {
+              "name": "s",
+              "type": "cyaml_span_t",
+              "doc": "Span to compare"
+            },
+            {
+              "name": "str",
+              "type": "const char*",
+              "doc": "String to compare against"
+            }
+          ],
+          "summary": "Compare span to string (case-insensitive)",
+          "return_doc": "true if equal (ignoring case)",
+          "examples": []
+        },
+        {
+          "name": "cyaml_span_cmp",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the spans"
+            },
+            {
+              "name": "a",
+              "type": "cyaml_span_t",
+              "doc": "First span"
+            },
+            {
+              "name": "b",
+              "type": "cyaml_span_t",
+              "doc": "Second span"
+            }
+          ],
+          "summary": "Compare two spans for equality",
+          "return_doc": "true if equal",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Scalar Value Extraction",
+      "functions": [
+        {
+          "name": "cyaml_as_int",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "n",
+              "type": "const cyaml_node_t*",
+              "doc": "Scalar node to parse"
+            },
+            {
+              "name": "out",
+              "type": "int64_t*",
+              "doc": "Output value"
+            }
+          ],
+          "summary": "Parse scalar as signed integer Supports decimal, hex (0x), and octal (0o) formats.",
+          "return_doc": "true on success",
+          "examples": []
+        },
+        {
+          "name": "cyaml_as_uint",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "n",
+              "type": "const cyaml_node_t*",
+              "doc": "Scalar node to parse"
+            },
+            {
+              "name": "out",
+              "type": "uint64_t*",
+              "doc": "Output value"
+            }
+          ],
+          "summary": "Parse scalar as unsigned integer Supports decimal, hex (0x), and octal (0o) formats.",
+          "return_doc": "true on success",
+          "examples": []
+        },
+        {
+          "name": "cyaml_as_float",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "n",
+              "type": "const cyaml_node_t*",
+              "doc": "Scalar node to parse"
+            },
+            {
+              "name": "out",
+              "type": "double*",
+              "doc": "Output value"
+            }
+          ],
+          "summary": "Parse scalar as floating point Supports .inf, -.inf, and .nan special values.",
+          "return_doc": "true on success",
+          "examples": []
+        },
+        {
+          "name": "cyaml_as_bool",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "n",
+              "type": "const cyaml_node_t*",
+              "doc": "Scalar node to parse"
+            },
+            {
+              "name": "out",
+              "type": "bool*",
+              "doc": "Output value"
+            }
+          ],
+          "summary": "Parse scalar as boolean Recognizes true/false (case-insensitive).",
+          "return_doc": "true on success",
+          "examples": []
+        },
+        {
+          "name": "cyaml_is_null_val",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "n",
+              "type": "const cyaml_node_t*",
+              "doc": "Node to check"
+            }
+          ],
+          "summary": "Check if scalar represents null Recognizes ~, null, Null, NULL, or empty value.",
+          "return_doc": "true if null",
+          "examples": []
+        },
+        {
+          "name": "cyaml_scalar_kind",
+          "return_type": "cyaml_scalar_kind_t",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "n",
+              "type": "const cyaml_node_t*",
+              "doc": "Scalar node to analyze"
+            }
+          ],
+          "summary": "Infer scalar value kind using YAML Core Schema rules For plain scalars, determines if value is null, bool, int, float, or string. Quoted scalars are always treated as strings.",
+          "return_doc": "Inferred kind (CYAML_KIND_STRING if not scalar or quoted)",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Mapping Access",
+      "functions": [
+        {
+          "name": "cyaml_get",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "n",
+              "type": "const cyaml_node_t*",
+              "doc": "Mapping node"
+            },
+            {
+              "name": "key",
+              "type": "const char*",
+              "doc": "Key to look up"
+            }
+          ],
+          "summary": "Get mapping value by string key",
+          "return_doc": "Value node or NULL if not found",
+          "examples": []
+        },
+        {
+          "name": "cyaml_has",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "n",
+              "type": "const cyaml_node_t*",
+              "doc": "Mapping node"
+            },
+            {
+              "name": "key",
+              "type": "const char*",
+              "doc": "Key to check"
+            }
+          ],
+          "summary": "Check if mapping contains key",
+          "return_doc": "true if key exists",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Path Access",
+      "functions": [
+        {
+          "name": "cyaml_path",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document to query"
+            },
+            {
+              "name": "path",
+              "type": "const char*",
+              "doc": "YPATH expression (e.g., \"/users[0]/name\", \"/config/db/host\")"
+            }
+          ],
+          "summary": "Navigate to node at YPATH Uses YPATH syntax: /store/books[0]/title, /users/*/name, etc. Absolute paths (starting with /) evaluate from document root.",
+          "return_doc": "First matching node or NULL if not found",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Building",
+      "functions": [
+        {
+          "name": "cyaml_doc_new",
+          "return_type": "cyaml_doc_t *",
+          "params": [],
+          "summary": "Create empty document for building YAML programmatically",
+          "return_doc": "New document or NULL on allocation failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_node_new",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate from"
+            },
+            {
+              "name": "type",
+              "type": "cyaml_type_t",
+              "doc": "Node type"
+            }
+          ],
+          "summary": "Allocate node of specified type from document pool",
+          "return_doc": "New node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_new_null",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate from"
+            }
+          ],
+          "summary": "Create null node",
+          "return_doc": "New null node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_new_str",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate from"
+            },
+            {
+              "name": "str",
+              "type": "const char*",
+              "doc": "String data (copied)"
+            },
+            {
+              "name": "len",
+              "type": "size_t",
+              "doc": "String length"
+            }
+          ],
+          "summary": "Create scalar node from string with explicit length",
+          "return_doc": "New scalar node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_new_cstr",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate from"
+            },
+            {
+              "name": "str",
+              "type": "const char*",
+              "doc": "Null-terminated string (copied)"
+            }
+          ],
+          "summary": "Create scalar node from null-terminated string",
+          "return_doc": "New scalar node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_new_int",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate from"
+            },
+            {
+              "name": "val",
+              "type": "int64_t",
+              "doc": "Integer value"
+            }
+          ],
+          "summary": "Create scalar node from signed integer",
+          "return_doc": "New scalar node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_new_uint",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate from"
+            },
+            {
+              "name": "val",
+              "type": "uint64_t",
+              "doc": "Unsigned value"
+            }
+          ],
+          "summary": "Create scalar node from unsigned integer",
+          "return_doc": "New scalar node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_new_float",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate from"
+            },
+            {
+              "name": "val",
+              "type": "double",
+              "doc": "Float value"
+            }
+          ],
+          "summary": "Create scalar node from floating point",
+          "return_doc": "New scalar node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_new_bool",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate from"
+            },
+            {
+              "name": "val",
+              "type": "bool",
+              "doc": "Boolean value"
+            }
+          ],
+          "summary": "Create scalar node from boolean",
+          "return_doc": "New scalar node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_new_seq",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate from"
+            }
+          ],
+          "summary": "Create empty sequence node",
+          "return_doc": "New sequence node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_new_map",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate from"
+            }
+          ],
+          "summary": "Create empty mapping node",
+          "return_doc": "New mapping node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_seq_push",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "seq",
+              "type": "cyaml_node_t*",
+              "doc": "Sequence node"
+            },
+            {
+              "name": "item",
+              "type": "cyaml_node_t*",
+              "doc": "Item to append"
+            }
+          ],
+          "summary": "Append item to sequence",
+          "return_doc": "true on success",
+          "examples": []
+        },
+        {
+          "name": "cyaml_map_set",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document containing the map"
+            },
+            {
+              "name": "map",
+              "type": "cyaml_node_t*",
+              "doc": "Mapping node"
+            },
+            {
+              "name": "key",
+              "type": "const char*",
+              "doc": "Key string (creates new scalar key)"
+            },
+            {
+              "name": "val",
+              "type": "cyaml_node_t*",
+              "doc": "Value node"
+            }
+          ],
+          "summary": "Set or update mapping key-value pair",
+          "return_doc": "true on success",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Emitting",
+      "functions": [
+        {
+          "name": "cyaml_emit",
+          "return_type": "char *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document to emit"
+            },
+            {
+              "name": "opts",
+              "type": "const cyaml_emit_opts_t*",
+              "doc": "Emit options (NULL for defaults: 2-space indent, 80 char width)"
+            },
+            {
+              "name": "len",
+              "type": "size_t*",
+              "doc": "Output length (NULL to ignore)"
+            }
+          ],
+          "summary": "Emit document to newly allocated YAML string",
+          "return_doc": "Allocated string (caller must free) or NULL on error",
+          "examples": []
+        },
+        {
+          "name": "cyaml_emit_node",
+          "return_type": "char *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "node",
+              "type": "const cyaml_node_t*",
+              "doc": "Node to emit"
+            },
+            {
+              "name": "opts",
+              "type": "const cyaml_emit_opts_t*",
+              "doc": "Emit options (NULL for defaults)"
+            },
+            {
+              "name": "len",
+              "type": "size_t*",
+              "doc": "Output length (NULL to ignore)"
+            }
+          ],
+          "summary": "Emit single node to newly allocated YAML string",
+          "return_doc": "Allocated string (caller must free) or NULL on error",
+          "examples": []
+        },
+        {
+          "name": "cyaml_stream_emit",
+          "return_type": "char *",
+          "params": [
+            {
+              "name": "stream",
+              "type": "const cyaml_stream_t*",
+              "doc": "Stream to emit"
+            },
+            {
+              "name": "len",
+              "type": "size_t*",
+              "doc": "Output length (NULL to ignore)"
+            }
+          ],
+          "summary": "Emit stream to YAML preserving original formatting",
+          "return_doc": "Allocated string (caller must free) or NULL on error",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Dump (Canonical Output)",
+      "functions": [
+        {
+          "name": "cyaml_dump",
+          "return_type": "char *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document to dump"
+            },
+            {
+              "name": "len",
+              "type": "size_t*",
+              "doc": "Output length (NULL to ignore)"
+            }
+          ],
+          "summary": "Dump document to canonical YAML format Uses yaml-test-suite out.yaml format conventions.",
+          "return_doc": "Allocated string (caller must free) or NULL on error",
+          "examples": []
+        },
+        {
+          "name": "cyaml_stream_dump",
+          "return_type": "char *",
+          "params": [
+            {
+              "name": "stream",
+              "type": "const cyaml_stream_t*",
+              "doc": "Stream to dump"
+            },
+            {
+              "name": "len",
+              "type": "size_t*",
+              "doc": "Output length (NULL to ignore)"
+            }
+          ],
+          "summary": "Dump stream to canonical YAML format (all documents)",
+          "return_doc": "Allocated string (caller must free) or NULL on error",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Event Stream",
+      "functions": [
+        {
+          "name": "cyaml_events",
+          "return_type": "char *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document to emit events for"
+            },
+            {
+              "name": "indent",
+              "type": "bool",
+              "doc": "Add visual indentation (false for yaml-test-suite format)"
+            },
+            {
+              "name": "len",
+              "type": "size_t*",
+              "doc": "Output length (NULL to ignore)"
+            }
+          ],
+          "summary": "Emit event stream for single document",
+          "return_doc": "Allocated string (caller must free) or NULL on error",
+          "examples": []
+        },
+        {
+          "name": "cyaml_stream_events",
+          "return_type": "char *",
+          "params": [
+            {
+              "name": "stream",
+              "type": "const cyaml_stream_t*",
+              "doc": "Stream to emit events for"
+            },
+            {
+              "name": "indent",
+              "type": "bool",
+              "doc": "Add visual indentation"
+            },
+            {
+              "name": "len",
+              "type": "size_t*",
+              "doc": "Output length (NULL to ignore)"
+            }
+          ],
+          "summary": "Emit event stream for full stream (all documents)",
+          "return_doc": "Allocated string (caller must free) or NULL on error",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "JSON Output",
+      "functions": [
+        {
+          "name": "cyaml_json",
+          "return_type": "char *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document to convert"
+            },
+            {
+              "name": "indent",
+              "type": "int",
+              "doc": "Spaces per indent level (0 = compact)"
+            },
+            {
+              "name": "len",
+              "type": "size_t*",
+              "doc": "Output length (NULL to ignore)"
+            }
+          ],
+          "summary": "Convert document to JSON",
+          "return_doc": "Allocated string (caller must free) or NULL on error",
+          "examples": []
+        },
+        {
+          "name": "cyaml_stream_json",
+          "return_type": "char *",
+          "params": [
+            {
+              "name": "stream",
+              "type": "const cyaml_stream_t*",
+              "doc": "Stream to convert"
+            },
+            {
+              "name": "indent",
+              "type": "int",
+              "doc": "Spaces per indent level (0 = compact)"
+            },
+            {
+              "name": "len",
+              "type": "size_t*",
+              "doc": "Output length (NULL to ignore)"
+            }
+          ],
+          "summary": "Convert stream to JSON Single document streams output the JSON value directly. Multi-document streams output as a JSON array.",
+          "return_doc": "Allocated string (caller must free) or NULL on error",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Anchor and Alias Management",
+      "functions": [
+        {
+          "name": "cyaml_set_anchor",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document containing the node (must be in BUILDING mode)"
+            },
+            {
+              "name": "node",
+              "type": "cyaml_node_t*",
+              "doc": "Node to anchor"
+            },
+            {
+              "name": "anchor",
+              "type": "const char*",
+              "doc": "Anchor name (without &), NULL to clear"
+            }
+          ],
+          "summary": "Set anchor name on a node",
+          "return_doc": "true on success",
+          "examples": []
+        },
+        {
+          "name": "cyaml_new_alias",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate in"
+            },
+            {
+              "name": "target",
+              "type": "cyaml_node_t*",
+              "doc": "Target node (must have anchor set)"
+            }
+          ],
+          "summary": "Create alias node pointing to an anchored node",
+          "return_doc": "New alias node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_find_anchor",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document to search"
+            },
+            {
+              "name": "anchor",
+              "type": "const char*",
+              "doc": "Anchor name to find"
+            }
+          ],
+          "summary": "Find node by anchor name (searches from root)",
+          "return_doc": "Node with anchor or NULL if not found",
+          "examples": []
+        },
+        {
+          "name": "cyaml_resolve_aliases",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to resolve"
+            }
+          ],
+          "summary": "Resolve all aliases in document (replace with deep copies of targets)",
+          "return_doc": "true on success, false if unresolved aliases remain",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Node Copy and Merge",
+      "functions": [
+        {
+          "name": "cyaml_node_copy",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Target document to allocate into"
+            },
+            {
+              "name": "src",
+              "type": "const cyaml_doc_t*",
+              "doc": "Source document containing the node"
+            },
+            {
+              "name": "node",
+              "type": "const cyaml_node_t*",
+              "doc": "Source node to copy"
+            }
+          ],
+          "summary": "Deep copy a node into a document Copies node and all children. Scalar content is copied into target doc.",
+          "return_doc": "New node or NULL on failure",
+          "examples": []
+        },
+        {
+          "name": "cyaml_map_merge",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document containing both nodes"
+            },
+            {
+              "name": "dst",
+              "type": "cyaml_node_t*",
+              "doc": "Destination map (modified in place)"
+            },
+            {
+              "name": "src",
+              "type": "const cyaml_node_t*",
+              "doc": "Source map to merge from"
+            }
+          ],
+          "summary": "Deep merge src map into dst map For conflicting keys: scalars replaced, maps merged recursively, seqs replaced.",
+          "return_doc": "true on success",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Key Sorting",
+      "functions": [
+        {
+          "name": "cyaml_map_sort",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the map"
+            },
+            {
+              "name": "map",
+              "type": "cyaml_node_t*",
+              "doc": "Mapping node to sort"
+            },
+            {
+              "name": "cmp",
+              "type": "cyaml_key_cmp_t",
+              "doc": "Comparison function (NULL for default alphabetical)"
+            }
+          ],
+          "summary": "Sort mapping keys",
+          "return_doc": "true on success",
+          "examples": []
+        },
+        {
+          "name": "cyaml_map_sort_recursive",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "node",
+              "type": "cyaml_node_t*",
+              "doc": "Starting node (will recurse into children)"
+            },
+            {
+              "name": "cmp",
+              "type": "cyaml_key_cmp_t",
+              "doc": "Comparison function (NULL for default alphabetical)"
+            }
+          ],
+          "summary": "Sort mapping keys recursively (all nested maps)",
+          "return_doc": "true on success",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Path-based Scanf/Printf API",
+      "functions": [
+        {
+          "name": "cyaml_scanf",
+          "return_type": "int",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document to query"
+            },
+            {
+              "name": "format",
+              "type": "const char*",
+              "doc": "Path+format string (space-separated)"
+            },
+            {
+              "name": "...",
+              "type": "",
+              "doc": "Variable arguments"
+            }
+          ],
+          "summary": "Extract values using path-based scanf",
+          "return_doc": "Number of successfully extracted values, -1 on format error",
+          "examples": [
+            "unsigned int port;\nchar host[256];\ncyaml_scanf(doc, \"/server/port %u /server/host %255s\", &port, host);"
+          ]
+        },
+        {
+          "name": "cyaml_vscanf",
+          "return_type": "int",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document to query"
+            },
+            {
+              "name": "format",
+              "type": "const char*",
+              "doc": "Path+format string (space-separated)"
+            },
+            {
+              "name": "ap",
+              "type": "va_list",
+              "doc": "Variable argument list"
+            }
+          ],
+          "summary": "Extract values using path-based scanf (va_list version)",
+          "return_doc": "Number of successfully extracted values, -1 on format error",
+          "examples": []
+        },
+        {
+          "name": "cyaml_node_scanf",
+          "return_type": "int",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "node",
+              "type": "const cyaml_node_t*",
+              "doc": "Starting node for relative paths (NULL = root)"
+            },
+            {
+              "name": "format",
+              "type": "const char*",
+              "doc": "Path+format string"
+            },
+            {
+              "name": "...",
+              "type": "",
+              "doc": "Variable arguments"
+            }
+          ],
+          "summary": "Extract values starting from a specific node Relative paths start from node, absolute paths (/) still use root.",
+          "return_doc": "Number of successfully extracted values",
+          "examples": []
+        },
+        {
+          "name": "cyaml_node_vscanf",
+          "return_type": "int",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing the node"
+            },
+            {
+              "name": "node",
+              "type": "const cyaml_node_t*",
+              "doc": "Starting node for relative paths (NULL = root)"
+            },
+            {
+              "name": "format",
+              "type": "const char*",
+              "doc": "Path+format string"
+            },
+            {
+              "name": "ap",
+              "type": "va_list",
+              "doc": "Variable argument list"
+            }
+          ],
+          "summary": "Extract values starting from a specific node (va_list version)",
+          "return_doc": "Number of successfully extracted values",
+          "examples": []
+        },
+        {
+          "name": "cyaml_buildf",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate in"
+            },
+            {
+              "name": "format",
+              "type": "const char*",
+              "doc": "YAML with format specifiers"
+            },
+            {
+              "name": "...",
+              "type": "",
+              "doc": "Variable arguments"
+            }
+          ],
+          "summary": "Build node from printf-style format string Creates nodes by substituting values into a YAML template. Formats: %d, %u, %ld, %lu, %lld, %llu, %f, %lf, %s, %b",
+          "return_doc": "New node or NULL on error",
+          "examples": [
+            "cyaml_buildf(doc, \"port: %d\", 8080)         // -> {port: 8080}",
+            "cyaml_buildf(doc, \"- %s\\n- %s\", \"a\", \"b\")   // -> [a, b]",
+            "cyaml_buildf(doc, \"%s\", \"hello\")            // -> \"hello\""
+          ]
+        },
+        {
+          "name": "cyaml_vbuildf",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to allocate in"
+            },
+            {
+              "name": "format",
+              "type": "const char*",
+              "doc": "YAML with format specifiers"
+            },
+            {
+              "name": "ap",
+              "type": "va_list",
+              "doc": "Variable argument list"
+            }
+          ],
+          "summary": "Build node from printf-style format string (va_list version)",
+          "return_doc": "New node or NULL on error",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Path-based Modification",
+      "functions": [
+        {
+          "name": "cyaml_insert_at",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to modify (must be CYAML_BUILDING mode or parsed)"
+            },
+            {
+              "name": "path",
+              "type": "const char*",
+              "doc": "Target path (e.g., \"/server/port\", \"/users/0/name\")"
+            },
+            {
+              "name": "val",
+              "type": "cyaml_node_t*",
+              "doc": "Value node to insert (must be from same doc)"
+            }
+          ],
+          "summary": "Insert or update node at path Creates intermediate maps as needed. For existing keys, replaces value. Path must resolve to a valid insertion point.",
+          "return_doc": "true on success",
+          "examples": [
+            "cyaml_insert_at(doc, \"/server/timeout\", cyaml_new_int(doc, 30));"
+          ]
+        },
+        {
+          "name": "cyaml_insertf",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to modify"
+            },
+            {
+              "name": "path",
+              "type": "const char*",
+              "doc": "Target path"
+            },
+            {
+              "name": "format",
+              "type": "const char*",
+              "doc": "YAML format string"
+            },
+            {
+              "name": "...",
+              "type": "",
+              "doc": "Variable arguments"
+            }
+          ],
+          "summary": "Insert printf-built node at path (convenience) Equivalent to: cyaml_insert_at(doc, path, cyaml_buildf(doc, format, ...))",
+          "return_doc": "true on success",
+          "examples": [
+            "cyaml_insertf(doc, \"/server\", \"timeout: %d\", 30);"
+          ]
+        },
+        {
+          "name": "cyaml_delete_at",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to modify"
+            },
+            {
+              "name": "path",
+              "type": "const char*",
+              "doc": "Path to node to delete"
+            }
+          ],
+          "summary": "Delete node at path Removes the node from its parent container.",
+          "return_doc": "true if deleted, false if not found",
+          "examples": []
+        },
+        {
+          "name": "cyaml_append_at",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to modify"
+            },
+            {
+              "name": "path",
+              "type": "const char*",
+              "doc": "Path to sequence"
+            },
+            {
+              "name": "val",
+              "type": "cyaml_node_t*",
+              "doc": "Value to append"
+            }
+          ],
+          "summary": "Append to sequence at path Path must resolve to a sequence node.",
+          "return_doc": "true on success",
+          "examples": []
+        },
+        {
+          "name": "cyaml_appendf",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "cyaml_doc_t*",
+              "doc": "Document to modify"
+            },
+            {
+              "name": "path",
+              "type": "const char*",
+              "doc": "Path to sequence"
+            },
+            {
+              "name": "format",
+              "type": "const char*",
+              "doc": "YAML format string for new item"
+            },
+            {
+              "name": "...",
+              "type": "",
+              "doc": "Variable arguments"
+            }
+          ],
+          "summary": "Append printf-built node to sequence at path Path must resolve to a sequence node.",
+          "return_doc": "true on success",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Node Comparison",
+      "functions": [
+        {
+          "name": "cyaml_node_cmp_str",
+          "return_type": "int",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing node"
+            },
+            {
+              "name": "node",
+              "type": "const cyaml_node_t*",
+              "doc": "Node to compare (must be scalar)"
+            },
+            {
+              "name": "str",
+              "type": "const char*",
+              "doc": "String to compare against"
+            },
+            {
+              "name": "len",
+              "type": "size_t",
+              "doc": "String length (0 = use strlen)"
+            }
+          ],
+          "summary": "Compare scalar node value to string (like strcmp)",
+          "return_doc": "0 if equal, <0 if node < str, >0 if node > str",
+          "examples": []
+        },
+        {
+          "name": "cyaml_node_eq_str",
+          "return_type": "bool",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document containing node"
+            },
+            {
+              "name": "node",
+              "type": "const cyaml_node_t*",
+              "doc": "Node to compare"
+            },
+            {
+              "name": "str",
+              "type": "const char*",
+              "doc": "String to compare (null-terminated)"
+            }
+          ],
+          "summary": "Check if scalar node equals string",
+          "return_doc": "true if node value equals str",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "Utility",
+      "functions": [
+        {
+          "name": "cyaml_strerror",
+          "return_type": "const char *",
+          "params": [
+            {
+              "name": "err",
+              "type": "cyaml_err_t",
+              "doc": "Error code"
+            }
+          ],
+          "summary": "Get human-readable error message",
+          "return_doc": "Static error string",
+          "examples": []
+        },
+        {
+          "name": "cyaml_version",
+          "return_type": "const char *",
+          "params": [],
+          "summary": "Get library version string",
+          "return_doc": "Static version string (e.g., \"0.1.0\")",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": []
+    },
+    {
+      "name": "YPATH Query API",
+      "functions": [
+        {
+          "name": "cyaml_path_query",
+          "return_type": "cyaml_path_result_t",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document to query"
+            },
+            {
+              "name": "context",
+              "type": "const cyaml_node_t*",
+              "doc": "Context node for relative paths (NULL = use root)"
+            },
+            {
+              "name": "path",
+              "type": "const char*",
+              "doc": "YPATH expression (e.g., \"/users[0]/name\", \"/items[?@.active]\")"
+            }
+          ],
+          "summary": "Execute a YPATH query and return all matching nodes Nodes returned are pointers into the document - no data is copied.",
+          "return_doc": "Result with matched nodes or error info",
+          "examples": []
+        },
+        {
+          "name": "cyaml_path_result_free",
+          "return_type": "void",
+          "params": [
+            {
+              "name": "result",
+              "type": "cyaml_path_result_t*",
+              "doc": "Result to free (NULL safe)"
+            }
+          ],
+          "summary": "Free query result",
+          "return_doc": "",
+          "examples": []
+        },
+        {
+          "name": "cyaml_path_first",
+          "return_type": "cyaml_node_t *",
+          "params": [
+            {
+              "name": "doc",
+              "type": "const cyaml_doc_t*",
+              "doc": "Document to query"
+            },
+            {
+              "name": "context",
+              "type": "const cyaml_node_t*",
+              "doc": "Context node for relative paths (NULL = use root)"
+            },
+            {
+              "name": "path",
+              "type": "const char*",
+              "doc": "YPATH expression"
+            }
+          ],
+          "summary": "Get first matching node (convenience wrapper) Equivalent to cyaml_path_query + taking first result + free.",
+          "return_doc": "First matching node or NULL on error/no match",
+          "examples": []
+        },
+        {
+          "name": "cyaml_path_debug",
+          "return_type": "void",
+          "params": [
+            {
+              "name": "path",
+              "type": "const char*",
+              "doc": "YPATH expression to analyze"
+            }
+          ],
+          "summary": "Debug: dump tokens and parsed AST to stdout",
+          "return_doc": "",
+          "examples": []
+        }
+      ],
+      "enums": [],
+      "structs": [
+        {
+          "name": "cyaml_path_result_t",
+          "fields": [
+            {
+              "name": "nodes",
+              "type": "cyaml_node_t**",
+              "doc": "Array of pointers to matched nodes (owned by doc)"
+            },
+            {
+              "name": "count",
+              "type": "uint32_t",
+              "doc": "Number of matched nodes"
+            },
+            {
+              "name": "error",
+              "type": "const char*",
+              "doc": "Error message (NULL on success)"
+            },
+            {
+              "name": "error_pos",
+              "type": "uint32_t",
+              "doc": "Position in path where error occurred"
+            }
+          ],
+          "doc": "Query result containing matched nodes or error info"
+        }
+      ]
+    }
+  ]
+}
