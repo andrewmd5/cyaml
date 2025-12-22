@@ -573,8 +573,8 @@ def main():
 
     if version not in versions:
         versions.append(version)
-        versions.sort(key=lambda v: [int(x) for x in v.lstrip('v').split('.')], reverse=True)
-        versions_file.write_text(json.dumps(versions, indent=2))
+    versions.sort(key=lambda v: [int(x) for x in v.lstrip('v').split('.')], reverse=True)
+    versions_file.write_text(json.dumps(versions, indent=2))
 
     # Create version directory
     version_dir = docs_dir / version
