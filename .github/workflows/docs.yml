@@ -51,6 +51,7 @@ jobs:
 
       - name: Generate documentation
         run: |
+          mkdir -p docs
           cp tools/gendocs.py /tmp/gendocs.py
           for tag in ${{ steps.versions.outputs.tags }}; do
             echo "=== Generating docs for $tag ==="
