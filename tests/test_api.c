@@ -2243,7 +2243,7 @@ void test_cyaml_appendf(void)
 
 void test_parse_tag_offbyone(void)
 {
-    char s[3] = ": !";
+    char s[3] = {':', ' ', '!'};
     cyaml_error_t err;
     cyaml_doc_t* doc = cyaml_parse(s, sizeof(s), NULL, &err);
     if (doc)
