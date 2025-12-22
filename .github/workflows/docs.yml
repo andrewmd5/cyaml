@@ -40,13 +40,10 @@ jobs:
             echo "tags=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
           elif [ "${{ github.ref_type }}" = "tag" ]; then
             echo "tags=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          elif [ "$site_exists" = "false" ]; then
+          else
             tags=$(git tag -l 'v*' --sort=-v:refname | tr '\n' ' ')
             echo "tags=$tags" >> $GITHUB_OUTPUT
             echo "Rebuilding all tags: $tags"
-          else
-            echo "No version specified and site branch exists" >&2
-            exit 1
           fi
 
       - name: Generate documentation
