@@ -413,8 +413,8 @@ def generate_html(title: str, description: str, canonical: str, content: str, pa
     version_options = []
     for v in versions:
         selected = " selected" if v == version else ""
-        version_options.append(f'<option value="{assets_prefix}{esc(v)}/"{selected}>{esc(v)}</option>')
-    version_select = f'<select class="version-select" id="version-select" onchange="window.location.href=this.value">{"".join(version_options)}</select>' if versions else ""
+        version_options.append(f'<option value="{esc(v)}"{selected}>{esc(v)}</option>')
+    version_select = f'''<select class="version-select" id="version-select" onchange="(function(sel){{var p=location.pathname.match(/v[0-9.]+\\/(.*)$/);window.location.href='{assets_prefix}'+sel.value+'/'+(p?p[1]:'')}})(this)">{"".join(version_options)}</select>''' if versions else ""
 
     search_display = 'style="display:none"' if page != 'api' else ''
 
