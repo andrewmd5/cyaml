@@ -1,60 +1,206 @@
 #include "cyaml_internal.h"
 #include <math.h>
 
-// #region Limits
+// #region Constants
 
 #define YPATH_MAX_STEPS 64
 #define YPATH_MAX_DEPTH 16
+#define YPATH_POOL_EXPR_CAP 128
+#define YPATH_POOL_STEP_CAP 256
+#define YPATH_EXPR_STACK_CAP 64
+#define YPATH_STACK_INIT_CAP 32
+#define YPATH_NODEBUF_INIT 16
+#define YPATH_NUM_BUF_SIZE 64
+#define YPATH_MAX_EXPONENT 308
+#define YPATH_UNARY_PREC 100
+
+#define YPATH_SLICE_HAS_START 0x01
+#define YPATH_SLICE_HAS_END 0x02
+#define YPATH_SLICE_HAS_STEP 0x04
 
 // #endregion
 
 // #region Token Types
 
 typedef enum {
-    TOK_EOF = 0,
-    TOK_SLASH,
-    TOK_DOT,
-    TOK_DOTDOT,
-    TOK_STAR,
-    TOK_STARSTAR,
-    TOK_LBRACKET,
-    TOK_RBRACKET,
-    TOK_LPAREN,
-    TOK_RPAREN,
-    TOK_COLON,
-    TOK_QUESTION,
-    TOK_AT,
-    TOK_OR,
-    TOK_AND,
-    TOK_EQ,
-    TOK_NE,
-    TOK_LT,
-    TOK_LE,
-    TOK_GT,
-    TOK_GE,
-    TOK_PLUS,
-    TOK_MINUS,
-    TOK_DIV,
-    TOK_BANG,
-    TOK_IDENT,
-    TOK_INT,
-    TOK_FLOAT,
-    TOK_STRING,
-    TOK_TRUE,
-    TOK_FALSE,
-    TOK_NULL,
-    TOK_ERROR
-} tok_t;
+    YPATH_TOK_EOF = 0,
+    YPATH_TOK_SLASH,
+    YPATH_TOK_DOT,
+    YPATH_TOK_DOTDOT,
+    YPATH_TOK_STAR,
+    YPATH_TOK_STARSTAR,
+    YPATH_TOK_LBRACKET,
+    YPATH_TOK_RBRACKET,
+    YPATH_TOK_LPAREN,
+    YPATH_TOK_RPAREN,
+    YPATH_TOK_COLON,
+    YPATH_TOK_QUESTION,
+    YPATH_TOK_AT,
+    YPATH_TOK_OR,
+    YPATH_TOK_AND,
+    YPATH_TOK_EQ,
+    YPATH_TOK_NE,
+    YPATH_TOK_LT,
+    YPATH_TOK_LE,
+    YPATH_TOK_GT,
+    YPATH_TOK_GE,
+    YPATH_TOK_PLUS,
+    YPATH_TOK_MINUS,
+    YPATH_TOK_DIV,
+    YPATH_TOK_BANG,
+    YPATH_TOK_IDENT,
+    YPATH_TOK_INT,
+    YPATH_TOK_FLOAT,
+    YPATH_TOK_STRING,
+    YPATH_TOK_TRUE,
+    YPATH_TOK_FALSE,
+    YPATH_TOK_NULL,
+    YPATH_TOK_ERROR
+} ypath_tok_t;
 
 typedef struct {
-    tok_t type;
+    ypath_tok_t type;
     const char* start;
     uint32_t len;
     union {
         int64_t i;
         double f;
     } val;
-} path_token_t;
+} ypath_token_t;
+
+// #endregion
+
+// #region AST Types
+
+typedef enum {
+    YPATH_STEP_IDENTITY,
+    YPATH_STEP_PARENT,
+    YPATH_STEP_WILDCARD,
+    YPATH_STEP_RECURSIVE,
+    YPATH_STEP_NAME,
+    YPATH_STEP_ALIAS,
+    YPATH_STEP_INDEX,
+    YPATH_STEP_SLICE,
+    YPATH_STEP_FILTER
+} ypath_step_type_t;
+
+typedef enum {
+    YPATH_EXPR_INT,
+    YPATH_EXPR_FLOAT,
+    YPATH_EXPR_STRING,
+    YPATH_EXPR_BOOL,
+    YPATH_EXPR_NULL,
+    YPATH_EXPR_PATH,
+    YPATH_EXPR_UNARY,
+    YPATH_EXPR_BINARY
+} ypath_expr_type_t;
+
+typedef enum {
+    YPATH_OP_OR,
+    YPATH_OP_AND,
+    YPATH_OP_EQ,
+    YPATH_OP_NE,
+    YPATH_OP_LT,
+    YPATH_OP_LE,
+    YPATH_OP_GT,
+    YPATH_OP_GE,
+    YPATH_OP_ADD,
+    YPATH_OP_SUB,
+    YPATH_OP_MUL,
+    YPATH_OP_DIV,
+    YPATH_OP_NEG,
+    YPATH_OP_NOT
+} ypath_op_t;
+
+typedef struct ypath_expr ypath_expr_t;
+typedef struct ypath_step ypath_step_t;
+
+struct ypath_step {
+    ypath_step_type_t type;
+    union {
+        struct {
+            const char* s;
+            uint32_t len;
+        } name;
+        int64_t idx;
+        struct {
+            int64_t start, end, step;
+            uint8_t flags;
+        } slice;
+        ypath_expr_t* filter;
+    } v;
+};
+
+struct ypath_expr {
+    ypath_expr_type_t type;
+    union {
+        int64_t i;
+        double f;
+        struct {
+            const char* s;
+            uint32_t len;
+        } str;
+        bool b;
+        struct {
+            ypath_step_t* steps;
+            uint32_t count;
+        } path;
+        struct {
+            ypath_op_t op;
+            ypath_expr_t* arg;
+        } unary;
+        struct {
+            ypath_op_t op;
+            ypath_expr_t *left, *right;
+        } binary;
+    } v;
+};
+
+typedef struct {
+    ypath_step_t steps[YPATH_MAX_STEPS];
+    uint32_t count;
+    bool absolute;
+} ypath_path_t;
+
+typedef struct {
+    ypath_expr_t exprs[YPATH_POOL_EXPR_CAP];
+    ypath_step_t steps[YPATH_POOL_STEP_CAP];
+    uint32_t expr_count;
+    uint32_t step_count;
+} ypath_pool_t;
+
+// #endregion
+
+// #region Value Types
+
+typedef enum {
+    YPATH_VAL_NULL,
+    YPATH_VAL_BOOL,
+    YPATH_VAL_INT,
+    YPATH_VAL_FLOAT,
+    YPATH_VAL_STR,
+    YPATH_VAL_NODES
+} ypath_val_type_t;
+
+typedef struct {
+    cyaml_node_t** nodes;
+    uint32_t count;
+    uint32_t cap;
+} ypath_nodebuf_t;
+
+typedef struct {
+    ypath_val_type_t type;
+    union {
+        bool b;
+        int64_t i;
+        double f;
+        struct {
+            const char* s;
+            uint32_t len;
+        } str;
+        ypath_nodebuf_t nodes;
+    } v;
+} ypath_val_t;
 
 // #endregion
 
@@ -64,69 +210,78 @@ typedef struct {
     const char* src;
     const char* cur;
     const char* end;
-    path_token_t tok;
+    ypath_token_t tok;
     const char* error;
     bool in_filter;
-} lexer_t;
+} ypath_lexer_t;
 
-#define LEX_AT(l) (*(l)->cur)
-#define LEX_PEEK(l, n) ((l)->cur + (n) < (l)->end ? (l)->cur[n] : C_NUL)
-#define LEX_LEFT(l) ((uint32_t)((l)->end - (l)->cur))
-#define LEX_ADV(l) ((l)->cur++)
+#define YPATH_LEX_AT(l) (*(l)->cur)
+#define YPATH_LEX_PEEK(l, n) ((l)->cur + (n) < (l)->end ? (l)->cur[n] : C_NUL)
+#define YPATH_LEX_LEFT(l) ((uint32_t)((l)->end - (l)->cur))
 
-#define PARSE_SIGNED_INT(p, out, flag, flags, on_err) \
-    do {                                              \
-        if ((p)->lex.tok.type == TOK_INT) {           \
-            (out) = (p)->lex.tok.val.i;               \
-            (flags) |= (flag);                        \
-            lex_next(&(p)->lex);                      \
-        } else if ((p)->lex.tok.type == TOK_MINUS) {  \
-            lex_next(&(p)->lex);                      \
-            if ((p)->lex.tok.type != TOK_INT) {       \
-                parse_err(p, "expected integer");     \
-                on_err;                               \
-            }                                         \
-            (out) = -(p)->lex.tok.val.i;              \
-            (flags) |= (flag);                        \
-            lex_next(&(p)->lex);                      \
-        }                                             \
+#define YPATH_IS_IDENT_START(c) (CYAML_IS_ALPHA(c) || (c) == '_')
+#define YPATH_IS_IDENT_CHAR(c) (YPATH_IS_IDENT_START(c) || CYAML_IS_DIGIT(c) || (c) == '-')
+
+#define YPATH_LEX_SINGLE(l, t) \
+    do {                       \
+        (l)->cur++;            \
+        (l)->tok.type = (t);   \
     } while (0)
 
-static void lex_init(lexer_t* l, const char* path)
+#define YPATH_LEX_DOUBLE(l, c2, t1, t2)                 \
+    do {                                                \
+        (l)->cur++;                                     \
+        if ((l)->cur < (l)->end && *(l)->cur == (c2)) { \
+            (l)->cur++;                                 \
+            (l)->tok.type = (t2);                       \
+        } else                                          \
+            (l)->tok.type = (t1);                       \
+    } while (0)
+
+#define YPATH_LEX_REQUIRE(l, c2, t, err)                \
+    do {                                                \
+        (l)->cur++;                                     \
+        if ((l)->cur < (l)->end && *(l)->cur == (c2)) { \
+            (l)->cur++;                                 \
+            (l)->tok.type = (t);                        \
+        } else {                                        \
+            (l)->tok.type = YPATH_TOK_ERROR;            \
+            (l)->error = (err);                         \
+        }                                               \
+    } while (0)
+
+static void ypath_lex_init(ypath_lexer_t* l, const char* path)
 {
     l->src = l->cur = path;
     l->end = path + strlen(path);
     l->error = NULL;
     l->in_filter = false;
-    l->tok.type = TOK_EOF;
+    l->tok.type = YPATH_TOK_EOF;
 }
 
-inline static void lex_skip_ws(lexer_t* l)
+static inline void ypath_lex_skip_ws(ypath_lexer_t* l)
 {
     while (l->cur < l->end && CYAML_IS_WHITE(*l->cur))
         l->cur++;
 }
 
-#define IS_IDENT_START(c) (CYAML_IS_ALPHA(c) || (c) == '_')
-#define IS_IDENT_CHAR(c) (IS_IDENT_START(c) || CYAML_IS_DIGIT(c) || (c) == '-')
-
-static void lex_ident(lexer_t* l)
+static void ypath_lex_ident(ypath_lexer_t* l)
 {
     l->tok.start = l->cur;
-    while (l->cur < l->end && IS_IDENT_CHAR(*l->cur))
+    while (l->cur < l->end && YPATH_IS_IDENT_CHAR(*l->cur))
         l->cur++;
     l->tok.len = (uint32_t)(l->cur - l->tok.start);
-    l->tok.type = TOK_IDENT;
+    l->tok.type = YPATH_TOK_IDENT;
 
     if (l->tok.len == L_TRUE && memcmp(l->tok.start, S_TRUE, L_TRUE) == 0)
-        l->tok.type = TOK_TRUE;
+        l->tok.type = YPATH_TOK_TRUE;
     else if (l->tok.len == L_FALSE && memcmp(l->tok.start, S_FALSE, L_FALSE) == 0)
-        l->tok.type = TOK_FALSE;
+        l->tok.type = YPATH_TOK_FALSE;
     else if (l->tok.len == L_NULL && memcmp(l->tok.start, S_NULL, L_NULL) == 0)
-        l->tok.type = TOK_NULL;
+        l->tok.type = YPATH_TOK_NULL;
 }
 
-static void lex_number(lexer_t* l)
+static void ypath_lex_number(ypath_lexer_t* l)
 {
     l->tok.start = l->cur;
     bool neg = (*l->cur == '-');
@@ -153,77 +308,50 @@ static void lex_number(lexer_t* l)
                 exp_sign = (*l->cur++ == '-') ? -1 : 1;
             bool exp_overflow = false;
             uint64_t exp_val = cyaml_parse_u64_n(&l->cur, l->end, &exp_overflow);
-            if (exp_overflow || exp_val > 308) {
-                l->tok.type = TOK_ERROR;
+            if (exp_overflow || exp_val > YPATH_MAX_EXPONENT) {
+                l->tok.type = YPATH_TOK_ERROR;
                 l->error = "exponent overflow";
                 return;
             }
             fval *= pow(10.0, exp_sign * (int)exp_val);
         }
-        l->tok.type = TOK_FLOAT;
+        l->tok.type = YPATH_TOK_FLOAT;
         l->tok.val.f = neg ? -fval : fval;
     } else {
-        l->tok.type = TOK_INT;
-        if (overflow) {
+        l->tok.type = YPATH_TOK_INT;
+        if (overflow)
             l->tok.val.i = neg ? INT64_MIN : INT64_MAX;
-        } else if (neg) {
+        else if (neg)
             l->tok.val.i = (uval > (uint64_t)INT64_MAX + 1) ? INT64_MIN : -(int64_t)uval;
-        } else {
+        else
             l->tok.val.i = (uval > (uint64_t)INT64_MAX) ? INT64_MAX : (int64_t)uval;
-        }
     }
     l->tok.len = (uint32_t)(l->cur - l->tok.start);
 }
 
-static void lex_string(lexer_t* l, char q)
+static void ypath_lex_string(ypath_lexer_t* l, char q)
 {
     l->cur++;
     l->tok.start = l->cur;
     while (l->cur < l->end && *l->cur != q) {
         if (*l->cur == C_BSLASH && l->cur + 1 < l->end)
             l->cur += 2;
-        else if (q == '\'' && *l->cur == '\'' && LEX_PEEK(l, 1) == '\'')
+        else if (q == '\'' && *l->cur == '\'' && YPATH_LEX_PEEK(l, 1) == '\'')
             l->cur += 2;
         else
             l->cur++;
     }
     l->tok.len = (uint32_t)(l->cur - l->tok.start);
-    l->tok.type = TOK_STRING;
+    l->tok.type = YPATH_TOK_STRING;
     if (l->cur < l->end)
         l->cur++;
 }
 
-#define LEX_SINGLE(l, t)     \
-    do {                     \
-        (l)->cur++;          \
-        (l)->tok.type = (t); \
-    } while (0)
-#define LEX_DOUBLE(l, c2, t1, t2)                       \
-    do {                                                \
-        (l)->cur++;                                     \
-        if ((l)->cur < (l)->end && *(l)->cur == (c2)) { \
-            (l)->cur++;                                 \
-            (l)->tok.type = (t2);                       \
-        } else                                          \
-            (l)->tok.type = (t1);                       \
-    } while (0)
-#define LEX_REQUIRE(l, c2, t, err)                      \
-    do {                                                \
-        (l)->cur++;                                     \
-        if ((l)->cur < (l)->end && *(l)->cur == (c2)) { \
-            (l)->cur++;                                 \
-            (l)->tok.type = (t);                        \
-        } else {                                        \
-            (l)->tok.type = TOK_ERROR;                  \
-            (l)->error = (err);                         \
-        }                                               \
-    } while (0)
-
-static void lex_next(lexer_t* l)
+static void ypath_lex_next(ypath_lexer_t* l)
 {
-    lex_skip_ws(l);
+    ypath_lex_skip_ws(l);
     if (l->cur >= l->end) {
-        l->tok = (path_token_t) { TOK_EOF, l->cur, 0, { 0 } };
+        l->tok = (ypath_token_t) { YPATH_TOK_EOF, l->cur, 0, { 0 } };
         return;
     }
 
@@ -232,77 +360,77 @@ static void lex_next(lexer_t* l)
 
     switch (c) {
     case '/':
-        LEX_SINGLE(l, l->in_filter ? TOK_DIV : TOK_SLASH);
+        YPATH_LEX_SINGLE(l, l->in_filter ? YPATH_TOK_DIV : YPATH_TOK_SLASH);
         break;
     case '.':
-        LEX_DOUBLE(l, '.', TOK_DOT, TOK_DOTDOT);
+        YPATH_LEX_DOUBLE(l, '.', YPATH_TOK_DOT, YPATH_TOK_DOTDOT);
         break;
     case '*':
-        LEX_DOUBLE(l, '*', TOK_STAR, TOK_STARSTAR);
+        YPATH_LEX_DOUBLE(l, '*', YPATH_TOK_STAR, YPATH_TOK_STARSTAR);
         break;
     case '[':
-        LEX_SINGLE(l, TOK_LBRACKET);
+        YPATH_LEX_SINGLE(l, YPATH_TOK_LBRACKET);
         break;
     case ']':
-        LEX_SINGLE(l, TOK_RBRACKET);
+        YPATH_LEX_SINGLE(l, YPATH_TOK_RBRACKET);
         break;
     case '(':
-        LEX_SINGLE(l, TOK_LPAREN);
+        YPATH_LEX_SINGLE(l, YPATH_TOK_LPAREN);
         break;
     case ')':
-        LEX_SINGLE(l, TOK_RPAREN);
+        YPATH_LEX_SINGLE(l, YPATH_TOK_RPAREN);
         break;
     case ':':
-        LEX_SINGLE(l, TOK_COLON);
+        YPATH_LEX_SINGLE(l, YPATH_TOK_COLON);
         break;
     case '?':
-        LEX_SINGLE(l, TOK_QUESTION);
+        YPATH_LEX_SINGLE(l, YPATH_TOK_QUESTION);
         break;
     case '@':
-        LEX_SINGLE(l, TOK_AT);
+        YPATH_LEX_SINGLE(l, YPATH_TOK_AT);
         break;
     case '+':
-        LEX_SINGLE(l, TOK_PLUS);
+        YPATH_LEX_SINGLE(l, YPATH_TOK_PLUS);
         break;
     case '|':
-        LEX_REQUIRE(l, '|', TOK_OR, "expected ||");
+        YPATH_LEX_REQUIRE(l, '|', YPATH_TOK_OR, "expected ||");
         break;
     case '&':
-        LEX_REQUIRE(l, '&', TOK_AND, "expected &&");
+        YPATH_LEX_REQUIRE(l, '&', YPATH_TOK_AND, "expected &&");
         break;
     case '=':
-        LEX_REQUIRE(l, '=', TOK_EQ, "expected ==");
+        YPATH_LEX_REQUIRE(l, '=', YPATH_TOK_EQ, "expected ==");
         break;
     case '!':
-        LEX_DOUBLE(l, '=', TOK_BANG, TOK_NE);
+        YPATH_LEX_DOUBLE(l, '=', YPATH_TOK_BANG, YPATH_TOK_NE);
         break;
     case '<':
-        LEX_DOUBLE(l, '=', TOK_LT, TOK_LE);
+        YPATH_LEX_DOUBLE(l, '=', YPATH_TOK_LT, YPATH_TOK_LE);
         break;
     case '>':
-        LEX_DOUBLE(l, '=', TOK_GT, TOK_GE);
+        YPATH_LEX_DOUBLE(l, '=', YPATH_TOK_GT, YPATH_TOK_GE);
         break;
     case '-':
-        if (CYAML_IS_DIGIT(LEX_PEEK(l, 1)))
-            lex_number(l);
+        if (CYAML_IS_DIGIT(YPATH_LEX_PEEK(l, 1)))
+            ypath_lex_number(l);
         else
-            LEX_SINGLE(l, TOK_MINUS);
+            YPATH_LEX_SINGLE(l, YPATH_TOK_MINUS);
         break;
     case '"':
     case '\'':
-        lex_string(l, c);
+        ypath_lex_string(l, c);
         return;
     default:
         if (CYAML_IS_DIGIT(c)) {
-            lex_number(l);
+            ypath_lex_number(l);
             return;
         }
-        if (IS_IDENT_START(c)) {
-            lex_ident(l);
+        if (YPATH_IS_IDENT_START(c)) {
+            ypath_lex_ident(l);
             return;
         }
         l->cur++;
-        l->tok.type = TOK_ERROR;
+        l->tok.type = YPATH_TOK_ERROR;
         l->error = "unexpected character";
         break;
     }
@@ -311,140 +439,34 @@ static void lex_next(lexer_t* l)
 
 // #endregion
 
-// #region AST Types
-
-typedef enum {
-    STEP_IDENTITY,
-    STEP_PARENT,
-    STEP_WILDCARD,
-    STEP_RECURSIVE,
-    STEP_NAME,
-    STEP_ALIAS,
-    STEP_INDEX,
-    STEP_SLICE,
-    STEP_FILTER
-} step_type_t;
-
-typedef enum {
-    EXPR_INT,
-    EXPR_FLOAT,
-    EXPR_STRING,
-    EXPR_BOOL,
-    EXPR_NULL,
-    EXPR_PATH,
-    EXPR_UNARY,
-    EXPR_BINARY
-} expr_type_t;
-
-typedef enum {
-    OP_OR,
-    OP_AND,
-    OP_EQ,
-    OP_NE,
-    OP_LT,
-    OP_LE,
-    OP_GT,
-    OP_GE,
-    OP_ADD,
-    OP_SUB,
-    OP_MUL,
-    OP_DIV,
-    OP_NEG,
-    OP_NOT
-} op_t;
-
-typedef struct expr expr_t;
-typedef struct step step_t;
-
-struct step {
-    step_type_t type;
-    union {
-        struct {
-            const char* s;
-            uint32_t len;
-        } name;
-        int64_t idx;
-        struct {
-            int64_t start, end, step;
-            uint8_t flags;
-        } slice; // flags: 1=has_start, 2=has_end, 4=has_step
-        expr_t* filter;
-    } v;
-};
-
-struct expr {
-    expr_type_t type;
-    union {
-        int64_t i;
-        double f;
-        struct {
-            const char* s;
-            uint32_t len;
-        } str;
-        bool b;
-        struct {
-            step_t* steps;
-            uint32_t count;
-        } path;
-        struct {
-            op_t op;
-            expr_t* arg;
-        } unary;
-        struct {
-            op_t op;
-            expr_t *left, *right;
-        } binary;
-    } v;
-};
-
-typedef struct {
-    step_t steps[YPATH_MAX_STEPS];
-    uint32_t count;
-    bool absolute;
-} path_t;
-
-// #endregion
-
-// #region Expression Pool
-
-typedef struct {
-    expr_t exprs[128];
-    step_t steps[256];
-    uint32_t expr_count;
-    uint32_t step_count;
-} expr_pool_t;
-
-static inline expr_t* pool_expr(expr_pool_t* p, expr_type_t type)
-{
-    if (p->expr_count >= 128)
-        return NULL;
-    expr_t* e = &p->exprs[p->expr_count++];
-    memset(e, 0, sizeof(*e));
-    e->type = type;
-    return e;
-}
-
-static inline step_t* pool_step(expr_pool_t* p)
-{
-    if (p->step_count >= 256)
-        return NULL;
-    step_t* s = &p->steps[p->step_count++];
-    memset(s, 0, sizeof(*s));
-    return s;
-}
-
-// #endregion
-
 // #region Parser
 
 typedef struct {
-    lexer_t lex;
-    expr_pool_t* pool;
+    ypath_lexer_t lex;
+    ypath_pool_t* pool;
     const char* error;
     uint32_t error_pos;
-} path_parser_t;
+} ypath_parser_t;
 
-static inline void parse_err(path_parser_t* p, const char* msg)
+#define YPATH_PARSE_SIGNED_INT(p, out, flag, flags, on_err) \
+    do {                                                    \
+        if ((p)->lex.tok.type == YPATH_TOK_INT) {           \
+            (out) = (p)->lex.tok.val.i;                     \
+            (flags) |= (flag);                              \
+            ypath_lex_next(&(p)->lex);                      \
+        } else if ((p)->lex.tok.type == YPATH_TOK_MINUS) {  \
+            ypath_lex_next(&(p)->lex);                      \
+            if ((p)->lex.tok.type != YPATH_TOK_INT) {       \
+                ypath_parse_err(p, "expected integer");     \
+                on_err;                                     \
+            }                                               \
+            (out) = -(p)->lex.tok.val.i;                    \
+            (flags) |= (flag);                              \
+            ypath_lex_next(&(p)->lex);                      \
+        }                                                   \
+    } while (0)
+
+static inline void ypath_parse_err(ypath_parser_t* p, const char* msg)
 {
     if (!p->error) {
         p->error = msg;
@@ -452,326 +474,344 @@ static inline void parse_err(path_parser_t* p, const char* msg)
     }
 }
 
-static bool expect(path_parser_t* p, tok_t t)
+static inline ypath_expr_t* ypath_pool_expr(ypath_pool_t* p, ypath_expr_type_t type)
 {
-    if (p->lex.tok.type == t) {
-        lex_next(&p->lex);
-        return true;
-    }
-    parse_err(p, "unexpected token");
-    return false;
+    if (p->expr_count >= YPATH_POOL_EXPR_CAP)
+        return NULL;
+    ypath_expr_t* e = &p->exprs[p->expr_count++];
+    memset(e, 0, sizeof(*e));
+    e->type = type;
+    return e;
 }
 
-static expr_t* parse_expr(path_parser_t* p);
-
-static step_t* add_step(path_parser_t* p, path_t* path)
+static inline ypath_step_t* ypath_pool_step(ypath_pool_t* p)
 {
-    if (path->count >= YPATH_MAX_STEPS) {
-        parse_err(p, "too many steps");
+    if (p->step_count >= YPATH_POOL_STEP_CAP)
         return NULL;
-    }
-    step_t* s = &path->steps[path->count++];
+    ypath_step_t* s = &p->steps[p->step_count++];
     memset(s, 0, sizeof(*s));
     return s;
 }
 
-static bool parse_bracket(path_parser_t* p, path_t* path)
+static bool ypath_expect(ypath_parser_t* p, ypath_tok_t t)
 {
-    lex_next(&p->lex);
+    if (p->lex.tok.type == t) {
+        ypath_lex_next(&p->lex);
+        return true;
+    }
+    ypath_parse_err(p, "unexpected token");
+    return false;
+}
 
-    if (p->lex.tok.type == TOK_QUESTION) {
-        lex_next(&p->lex);
+static ypath_expr_t* ypath_parse_expr(ypath_parser_t* p);
+
+static ypath_step_t* ypath_add_step(ypath_parser_t* p, ypath_path_t* path)
+{
+    if (path->count >= YPATH_MAX_STEPS) {
+        ypath_parse_err(p, "too many steps");
+        return NULL;
+    }
+    ypath_step_t* s = &path->steps[path->count++];
+    memset(s, 0, sizeof(*s));
+    return s;
+}
+
+static bool ypath_parse_bracket(ypath_parser_t* p, ypath_path_t* path)
+{
+    ypath_lex_next(&p->lex);
+
+    if (p->lex.tok.type == YPATH_TOK_QUESTION) {
+        ypath_lex_next(&p->lex);
         p->lex.in_filter = true;
-        expr_t* f = parse_expr(p);
+        ypath_expr_t* f = ypath_parse_expr(p);
         p->lex.in_filter = false;
         if (!f)
             return false;
-        step_t* s = add_step(p, path);
+        ypath_step_t* s = ypath_add_step(p, path);
         if (!s)
             return false;
-        s->type = STEP_FILTER;
+        s->type = YPATH_STEP_FILTER;
         s->v.filter = f;
-    } else if (p->lex.tok.type == TOK_INT || p->lex.tok.type == TOK_COLON || p->lex.tok.type == TOK_MINUS) {
+    } else if (p->lex.tok.type == YPATH_TOK_INT || p->lex.tok.type == YPATH_TOK_COLON || p->lex.tok.type == YPATH_TOK_MINUS) {
         int64_t start = 0, end = 0, step_val = 1;
         uint8_t flags = 0;
         bool is_slice = false;
 
-        PARSE_SIGNED_INT(p, start, 1, flags, return false);
+        YPATH_PARSE_SIGNED_INT(p, start, YPATH_SLICE_HAS_START, flags, return false);
 
-        if (p->lex.tok.type == TOK_COLON) {
+        if (p->lex.tok.type == YPATH_TOK_COLON) {
             is_slice = true;
-            lex_next(&p->lex);
-            PARSE_SIGNED_INT(p, end, 2, flags, return false);
-            if (p->lex.tok.type == TOK_COLON) {
-                lex_next(&p->lex);
-                PARSE_SIGNED_INT(p, step_val, 4, flags, return false);
+            ypath_lex_next(&p->lex);
+            YPATH_PARSE_SIGNED_INT(p, end, YPATH_SLICE_HAS_END, flags, return false);
+            if (p->lex.tok.type == YPATH_TOK_COLON) {
+                ypath_lex_next(&p->lex);
+                YPATH_PARSE_SIGNED_INT(p, step_val, YPATH_SLICE_HAS_STEP, flags, return false);
             }
         }
 
-        step_t* s = add_step(p, path);
+        ypath_step_t* s = ypath_add_step(p, path);
         if (!s)
             return false;
         if (is_slice) {
-            s->type = STEP_SLICE;
+            s->type = YPATH_STEP_SLICE;
             s->v.slice.start = start;
             s->v.slice.end = end;
             s->v.slice.step = step_val;
             s->v.slice.flags = flags;
         } else {
-            s->type = STEP_INDEX;
+            s->type = YPATH_STEP_INDEX;
             s->v.idx = start;
         }
-    } else if (p->lex.tok.type == TOK_STAR) {
-        lex_next(&p->lex);
-        step_t* s = add_step(p, path);
+    } else if (p->lex.tok.type == YPATH_TOK_STAR) {
+        ypath_lex_next(&p->lex);
+        ypath_step_t* s = ypath_add_step(p, path);
         if (!s)
             return false;
-        s->type = STEP_WILDCARD;
+        s->type = YPATH_STEP_WILDCARD;
     } else {
-        parse_err(p, "expected index, slice, or filter");
+        ypath_parse_err(p, "expected index, slice, or filter");
         return false;
     }
 
-    return expect(p, TOK_RBRACKET);
+    return ypath_expect(p, YPATH_TOK_RBRACKET);
 }
 
-static bool parse_step(path_parser_t* p, path_t* path)
+static bool ypath_parse_step(ypath_parser_t* p, ypath_path_t* path)
 {
-    step_t* s;
+    ypath_step_t* s;
     switch (p->lex.tok.type) {
-    case TOK_DOT:
-        lex_next(&p->lex);
-        if (!(s = add_step(p, path)))
+    case YPATH_TOK_DOT:
+        ypath_lex_next(&p->lex);
+        if (!(s = ypath_add_step(p, path)))
             return false;
-        s->type = STEP_IDENTITY;
+        s->type = YPATH_STEP_IDENTITY;
         break;
-    case TOK_DOTDOT:
-        lex_next(&p->lex);
-        if (!(s = add_step(p, path)))
+    case YPATH_TOK_DOTDOT:
+        ypath_lex_next(&p->lex);
+        if (!(s = ypath_add_step(p, path)))
             return false;
-        s->type = STEP_PARENT;
+        s->type = YPATH_STEP_PARENT;
         break;
-    case TOK_STARSTAR:
-        lex_next(&p->lex);
-        if (!(s = add_step(p, path)))
+    case YPATH_TOK_STARSTAR:
+        ypath_lex_next(&p->lex);
+        if (!(s = ypath_add_step(p, path)))
             return false;
-        s->type = STEP_RECURSIVE;
+        s->type = YPATH_STEP_RECURSIVE;
         break;
-    case TOK_STAR:
-        lex_next(&p->lex);
-        if (p->lex.tok.type == TOK_IDENT) {
-            if (!(s = add_step(p, path)))
+    case YPATH_TOK_STAR:
+        ypath_lex_next(&p->lex);
+        if (p->lex.tok.type == YPATH_TOK_IDENT) {
+            if (!(s = ypath_add_step(p, path)))
                 return false;
-            s->type = STEP_ALIAS;
+            s->type = YPATH_STEP_ALIAS;
             s->v.name.s = p->lex.tok.start;
             s->v.name.len = p->lex.tok.len;
-            lex_next(&p->lex);
+            ypath_lex_next(&p->lex);
         } else {
-            if (!(s = add_step(p, path)))
+            if (!(s = ypath_add_step(p, path)))
                 return false;
-            s->type = STEP_WILDCARD;
+            s->type = YPATH_STEP_WILDCARD;
         }
         break;
-    case TOK_IDENT:
-    case TOK_STRING:
-    case TOK_INT:
-        if (!(s = add_step(p, path)))
+    case YPATH_TOK_IDENT:
+    case YPATH_TOK_STRING:
+    case YPATH_TOK_INT:
+        if (!(s = ypath_add_step(p, path)))
             return false;
-        s->type = STEP_NAME;
+        s->type = YPATH_STEP_NAME;
         s->v.name.s = p->lex.tok.start;
         s->v.name.len = p->lex.tok.len;
-        lex_next(&p->lex);
+        ypath_lex_next(&p->lex);
         break;
-    case TOK_LBRACKET:
-        if (!parse_bracket(p, path))
+    case YPATH_TOK_LBRACKET:
+        if (!ypath_parse_bracket(p, path))
             return false;
         break;
     default:
-        parse_err(p, "expected step");
+        ypath_parse_err(p, "expected step");
         return false;
     }
 
-    while (p->lex.tok.type == TOK_LBRACKET)
-        if (!parse_bracket(p, path))
+    while (p->lex.tok.type == YPATH_TOK_LBRACKET)
+        if (!ypath_parse_bracket(p, path))
             return false;
     return true;
 }
 
-static bool parse_path_steps(path_parser_t* p, path_t* path)
+static bool ypath_parse_path_steps(ypath_parser_t* p, ypath_path_t* path)
 {
-    if (p->lex.tok.type == TOK_EOF || p->lex.tok.type == TOK_RPAREN || p->lex.tok.type == TOK_RBRACKET)
+    if (p->lex.tok.type == YPATH_TOK_EOF || p->lex.tok.type == YPATH_TOK_RPAREN || p->lex.tok.type == YPATH_TOK_RBRACKET)
         return true;
-    if (!parse_step(p, path))
+    if (!ypath_parse_step(p, path))
         return false;
-    while (p->lex.tok.type == TOK_SLASH) {
-        lex_next(&p->lex);
-        if (!parse_step(p, path))
+    while (p->lex.tok.type == YPATH_TOK_SLASH) {
+        ypath_lex_next(&p->lex);
+        if (!ypath_parse_step(p, path))
             return false;
     }
     return true;
 }
 
-static expr_t* parse_primary(path_parser_t* p)
+static ypath_expr_t* ypath_parse_primary(ypath_parser_t* p)
 {
-    expr_t* e;
+    ypath_expr_t* e;
     switch (p->lex.tok.type) {
-    case TOK_INT:
-        if (!(e = pool_expr(p->pool, EXPR_INT)))
+    case YPATH_TOK_INT:
+        if (!(e = ypath_pool_expr(p->pool, YPATH_EXPR_INT)))
             return NULL;
         e->v.i = p->lex.tok.val.i;
-        lex_next(&p->lex);
+        ypath_lex_next(&p->lex);
         return e;
-    case TOK_FLOAT:
-        if (!(e = pool_expr(p->pool, EXPR_FLOAT)))
+    case YPATH_TOK_FLOAT:
+        if (!(e = ypath_pool_expr(p->pool, YPATH_EXPR_FLOAT)))
             return NULL;
         e->v.f = p->lex.tok.val.f;
-        lex_next(&p->lex);
+        ypath_lex_next(&p->lex);
         return e;
-    case TOK_STRING:
-        if (!(e = pool_expr(p->pool, EXPR_STRING)))
+    case YPATH_TOK_STRING:
+        if (!(e = ypath_pool_expr(p->pool, YPATH_EXPR_STRING)))
             return NULL;
         e->v.str.s = p->lex.tok.start;
         e->v.str.len = p->lex.tok.len;
-        lex_next(&p->lex);
+        ypath_lex_next(&p->lex);
         return e;
-    case TOK_TRUE:
-    case TOK_FALSE:
-        if (!(e = pool_expr(p->pool, EXPR_BOOL)))
+    case YPATH_TOK_TRUE:
+    case YPATH_TOK_FALSE:
+        if (!(e = ypath_pool_expr(p->pool, YPATH_EXPR_BOOL)))
             return NULL;
-        e->v.b = (p->lex.tok.type == TOK_TRUE);
-        lex_next(&p->lex);
+        e->v.b = (p->lex.tok.type == YPATH_TOK_TRUE);
+        ypath_lex_next(&p->lex);
         return e;
-    case TOK_NULL:
-        if (!(e = pool_expr(p->pool, EXPR_NULL)))
+    case YPATH_TOK_NULL:
+        if (!(e = ypath_pool_expr(p->pool, YPATH_EXPR_NULL)))
             return NULL;
-        lex_next(&p->lex);
+        ypath_lex_next(&p->lex);
         return e;
-    case TOK_AT: {
-        lex_next(&p->lex);
-        if (!(e = pool_expr(p->pool, EXPR_PATH)))
+    case YPATH_TOK_AT: {
+        ypath_lex_next(&p->lex);
+        if (!(e = ypath_pool_expr(p->pool, YPATH_EXPR_PATH)))
             return NULL;
-        step_t* first = &p->pool->steps[p->pool->step_count];
+        ypath_step_t* first = &p->pool->steps[p->pool->step_count];
         uint32_t start_count = p->pool->step_count;
-        while (p->lex.tok.type == TOK_SLASH || p->lex.tok.type == TOK_DOT || p->lex.tok.type == TOK_LBRACKET) {
-            if (p->lex.tok.type == TOK_SLASH || p->lex.tok.type == TOK_DOT)
-                lex_next(&p->lex);
-            step_t* s = pool_step(p->pool);
-            if (!s)
-                return NULL;
-            switch (p->lex.tok.type) {
-            case TOK_IDENT:
-            case TOK_STRING:
-                s->type = STEP_NAME;
-                s->v.name.s = p->lex.tok.start;
-                s->v.name.len = p->lex.tok.len;
-                lex_next(&p->lex);
-                break;
-            case TOK_LBRACKET:
-                p->pool->step_count--;
-                path_t tmp = { .count = 0 };
-                if (!parse_bracket(p, &tmp))
+        while (p->lex.tok.type == YPATH_TOK_SLASH || p->lex.tok.type == YPATH_TOK_DOT || p->lex.tok.type == YPATH_TOK_LBRACKET) {
+            if (p->lex.tok.type == YPATH_TOK_SLASH || p->lex.tok.type == YPATH_TOK_DOT)
+                ypath_lex_next(&p->lex);
+            if (p->lex.tok.type == YPATH_TOK_LBRACKET) {
+                ypath_path_t tmp = { .count = 0 };
+                if (!ypath_parse_bracket(p, &tmp))
                     return NULL;
-                memcpy(s, &tmp.steps[0], sizeof(step_t));
-                p->pool->step_count++;
-                break;
-            default:
-                parse_err(p, "expected path step");
-                return NULL;
+                ypath_step_t* s = ypath_pool_step(p->pool);
+                if (!s)
+                    return NULL;
+                *s = tmp.steps[0];
+            } else {
+                ypath_step_t* s = ypath_pool_step(p->pool);
+                if (!s)
+                    return NULL;
+                switch (p->lex.tok.type) {
+                case YPATH_TOK_IDENT:
+                case YPATH_TOK_STRING:
+                    s->type = YPATH_STEP_NAME;
+                    s->v.name.s = p->lex.tok.start;
+                    s->v.name.len = p->lex.tok.len;
+                    ypath_lex_next(&p->lex);
+                    break;
+                default:
+                    ypath_parse_err(p, "expected path step");
+                    return NULL;
+                }
             }
         }
         e->v.path.steps = first;
         e->v.path.count = p->pool->step_count - start_count;
         return e;
     }
-    case TOK_LPAREN:
-        lex_next(&p->lex);
-        e = parse_expr(p);
+    case YPATH_TOK_LPAREN:
+        ypath_lex_next(&p->lex);
+        e = ypath_parse_expr(p);
         if (!e)
             return NULL;
-        if (!expect(p, TOK_RPAREN))
+        if (!ypath_expect(p, YPATH_TOK_RPAREN))
             return NULL;
         return e;
     default:
-        parse_err(p, "expected expression");
+        ypath_parse_err(p, "expected expression");
         return NULL;
     }
 }
 
-// Operator precedence (higher = binds tighter)
-static int op_prec(tok_t t)
+static int ypath_op_prec(ypath_tok_t t)
 {
     switch (t) {
-    case TOK_OR:
+    case YPATH_TOK_OR:
         return 1;
-    case TOK_AND:
+    case YPATH_TOK_AND:
         return 2;
-    case TOK_EQ:
-    case TOK_NE:
+    case YPATH_TOK_EQ:
+    case YPATH_TOK_NE:
         return 3;
-    case TOK_LT:
-    case TOK_LE:
-    case TOK_GT:
-    case TOK_GE:
+    case YPATH_TOK_LT:
+    case YPATH_TOK_LE:
+    case YPATH_TOK_GT:
+    case YPATH_TOK_GE:
         return 4;
-    case TOK_PLUS:
-    case TOK_MINUS:
+    case YPATH_TOK_PLUS:
+    case YPATH_TOK_MINUS:
         return 5;
-    case TOK_STAR:
-    case TOK_DIV:
+    case YPATH_TOK_STAR:
+    case YPATH_TOK_DIV:
         return 6;
     default:
         return 0;
     }
 }
 
-static op_t tok_to_op(tok_t t)
+static ypath_op_t ypath_tok_to_op(ypath_tok_t t)
 {
     switch (t) {
-    case TOK_OR:
-        return OP_OR;
-    case TOK_AND:
-        return OP_AND;
-    case TOK_EQ:
-        return OP_EQ;
-    case TOK_NE:
-        return OP_NE;
-    case TOK_LT:
-        return OP_LT;
-    case TOK_LE:
-        return OP_LE;
-    case TOK_GT:
-        return OP_GT;
-    case TOK_GE:
-        return OP_GE;
-    case TOK_PLUS:
-        return OP_ADD;
-    case TOK_MINUS:
-        return OP_SUB;
-    case TOK_STAR:
-        return OP_MUL;
-    case TOK_DIV:
-        return OP_DIV;
+    case YPATH_TOK_OR:
+        return YPATH_OP_OR;
+    case YPATH_TOK_AND:
+        return YPATH_OP_AND;
+    case YPATH_TOK_EQ:
+        return YPATH_OP_EQ;
+    case YPATH_TOK_NE:
+        return YPATH_OP_NE;
+    case YPATH_TOK_LT:
+        return YPATH_OP_LT;
+    case YPATH_TOK_LE:
+        return YPATH_OP_LE;
+    case YPATH_TOK_GT:
+        return YPATH_OP_GT;
+    case YPATH_TOK_GE:
+        return YPATH_OP_GE;
+    case YPATH_TOK_PLUS:
+        return YPATH_OP_ADD;
+    case YPATH_TOK_MINUS:
+        return YPATH_OP_SUB;
+    case YPATH_TOK_STAR:
+        return YPATH_OP_MUL;
+    case YPATH_TOK_DIV:
+        return YPATH_OP_DIV;
     default:
-        return (op_t)-1;
+        return (ypath_op_t)-1;
     }
 }
 
-#define EXPR_STACK_CAP 64
-
 typedef struct {
-    op_t op;
+    ypath_op_t op;
     int prec;
     bool unary;
-} op_entry_t;
+} ypath_op_entry_t;
 
 typedef struct {
-    expr_t* operands[EXPR_STACK_CAP];
-    op_entry_t ops[EXPR_STACK_CAP];
+    ypath_expr_t* operands[YPATH_EXPR_STACK_CAP];
+    ypath_op_entry_t ops[YPATH_EXPR_STACK_CAP];
     int operand_count;
     int op_count;
-} expr_stack_t;
+} ypath_expr_stack_t;
 
-static bool expr_stack_reduce(path_parser_t* p, expr_stack_t* s)
+static bool ypath_expr_stack_reduce(ypath_parser_t* p, ypath_expr_stack_t* s)
 {
     if (s->op_count == 0)
         return false;
@@ -779,8 +819,8 @@ static bool expr_stack_reduce(path_parser_t* p, expr_stack_t* s)
     if (s->ops[s->op_count].unary) {
         if (s->operand_count < 1)
             return false;
-        expr_t* arg = s->operands[--s->operand_count];
-        expr_t* e = pool_expr(p->pool, EXPR_UNARY);
+        ypath_expr_t* arg = s->operands[--s->operand_count];
+        ypath_expr_t* e = ypath_pool_expr(p->pool, YPATH_EXPR_UNARY);
         if (!e)
             return false;
         e->v.unary.op = s->ops[s->op_count].op;
@@ -789,9 +829,9 @@ static bool expr_stack_reduce(path_parser_t* p, expr_stack_t* s)
     } else {
         if (s->operand_count < 2)
             return false;
-        expr_t* right = s->operands[--s->operand_count];
-        expr_t* left = s->operands[--s->operand_count];
-        expr_t* e = pool_expr(p->pool, EXPR_BINARY);
+        ypath_expr_t* right = s->operands[--s->operand_count];
+        ypath_expr_t* left = s->operands[--s->operand_count];
+        ypath_expr_t* e = ypath_pool_expr(p->pool, YPATH_EXPR_BINARY);
         if (!e)
             return false;
         e->v.binary.op = s->ops[s->op_count].op;
@@ -802,120 +842,209 @@ static bool expr_stack_reduce(path_parser_t* p, expr_stack_t* s)
     return true;
 }
 
-static expr_t* parse_expr(path_parser_t* p)
+static ypath_expr_t* ypath_parse_expr(ypath_parser_t* p)
 {
-    expr_stack_t s = { .operand_count = 0, .op_count = 0 };
+    ypath_expr_stack_t s = { .operand_count = 0, .op_count = 0 };
     bool expect_operand = true;
 
     for (;;) {
         if (expect_operand) {
-            // Handle prefix unary operators
-            while (p->lex.tok.type == TOK_MINUS || p->lex.tok.type == TOK_BANG) {
-                if (s.op_count >= EXPR_STACK_CAP) {
-                    parse_err(p, "expression too complex");
+            while (p->lex.tok.type == YPATH_TOK_MINUS || p->lex.tok.type == YPATH_TOK_BANG) {
+                if (s.op_count >= YPATH_EXPR_STACK_CAP) {
+                    ypath_parse_err(p, "expression too complex");
                     return NULL;
                 }
-                op_t op = (p->lex.tok.type == TOK_MINUS) ? OP_NEG : OP_NOT;
-                s.ops[s.op_count++] = (op_entry_t) { op, 100, true };
-                lex_next(&p->lex);
+                ypath_op_t op = (p->lex.tok.type == YPATH_TOK_MINUS) ? YPATH_OP_NEG : YPATH_OP_NOT;
+                s.ops[s.op_count++] = (ypath_op_entry_t) { op, YPATH_UNARY_PREC, true };
+                ypath_lex_next(&p->lex);
             }
 
-            // Parse primary
-            expr_t* e = parse_primary(p);
+            ypath_expr_t* e = ypath_parse_primary(p);
             if (!e)
                 return NULL;
-            if (s.operand_count >= EXPR_STACK_CAP) {
-                parse_err(p, "expression too complex");
+            if (s.operand_count >= YPATH_EXPR_STACK_CAP) {
+                ypath_parse_err(p, "expression too complex");
                 return NULL;
             }
             s.operands[s.operand_count++] = e;
 
-            // Reduce any pending unary operators
-            while (s.op_count > 0 && s.ops[s.op_count - 1].unary) {
-                if (!expr_stack_reduce(p, &s))
+            while (s.op_count > 0 && s.ops[s.op_count - 1].unary)
+                if (!ypath_expr_stack_reduce(p, &s))
                     return NULL;
-            }
             expect_operand = false;
         } else {
-            // Check for binary operator
-            int prec = op_prec(p->lex.tok.type);
+            int prec = ypath_op_prec(p->lex.tok.type);
             if (prec == 0)
                 break;
 
-            // Reduce operators with higher or equal precedence (left associative)
-            while (s.op_count > 0 && !s.ops[s.op_count - 1].unary && s.ops[s.op_count - 1].prec >= prec) {
-                if (!expr_stack_reduce(p, &s))
+            while (s.op_count > 0 && !s.ops[s.op_count - 1].unary && s.ops[s.op_count - 1].prec >= prec)
+                if (!ypath_expr_stack_reduce(p, &s))
                     return NULL;
-            }
 
-            if (s.op_count >= EXPR_STACK_CAP) {
-                parse_err(p, "expression too complex");
+            if (s.op_count >= YPATH_EXPR_STACK_CAP) {
+                ypath_parse_err(p, "expression too complex");
                 return NULL;
             }
-            s.ops[s.op_count++] = (op_entry_t) { tok_to_op(p->lex.tok.type), prec, false };
-            lex_next(&p->lex);
+            s.ops[s.op_count++] = (ypath_op_entry_t) { ypath_tok_to_op(p->lex.tok.type), prec, false };
+            ypath_lex_next(&p->lex);
             expect_operand = true;
         }
     }
 
-    // Reduce remaining operators
-    while (s.op_count > 0) {
-        if (!expr_stack_reduce(p, &s))
+    while (s.op_count > 0)
+        if (!ypath_expr_stack_reduce(p, &s))
             return NULL;
-    }
 
     if (s.operand_count != 1) {
-        parse_err(p, "invalid expression");
+        ypath_parse_err(p, "invalid expression");
         return NULL;
     }
     return s.operands[0];
 }
 
-static bool parse_path(path_parser_t* p, path_t* path)
+static bool ypath_parse_path(ypath_parser_t* p, ypath_path_t* path)
 {
     memset(path, 0, sizeof(*path));
-    if (p->lex.tok.type == TOK_SLASH) {
+    if (p->lex.tok.type == YPATH_TOK_SLASH) {
         path->absolute = true;
-        lex_next(&p->lex);
+        ypath_lex_next(&p->lex);
     }
-    return parse_path_steps(p, path);
+    return ypath_parse_path_steps(p, path);
 }
 
 // #endregion
 
 // #region Evaluator
 
-#define CLAMP(v, lo, hi) ((v) < (lo) ? (lo) : (v) > (hi) ? (hi) \
-                                                         : (v))
-
-static inline int64_t norm_slice_idx(int64_t idx, int64_t len)
-{
-    idx = CLAMP(idx, -len, len);
-    return idx < 0 ? idx + len : idx;
-}
+#define YPATH_CLAMP(v, lo, hi) ((v) < (lo) ? (lo) : (v) > (hi) ? (hi) \
+                                                               : (v))
+#define YPATH_STR_EQ(s1, l1, s2, l2) ((l1) == (l2) && memcmp((s1), (s2), (l1)) == 0)
 
 typedef struct {
     const cyaml_doc_t* doc;
     const cyaml_node_t* root;
     const cyaml_node_t* current;
     const char* src;
-} eval_t;
+} ypath_ctx_t;
 
 typedef struct {
-    cyaml_node_t** nodes;
-    uint32_t count;
-    uint32_t cap;
-} nodebuf_t;
+    cyaml_node_t* node;
+    uint32_t child_idx;
+    uint8_t phase;
+} ypath_trav_frame_t;
 
-static inline void nodebuf_free(nodebuf_t* b) { free(b->nodes); }
+typedef enum {
+    YPATH_FRAME_EXPR,
+    YPATH_FRAME_PATH
+} ypath_frame_type_t;
 
-static bool nodebuf_add(nodebuf_t* b, cyaml_node_t* n)
+typedef struct {
+    ypath_frame_type_t type;
+    uint8_t phase;
+    union {
+        struct {
+            const ypath_expr_t* expr;
+            const cyaml_node_t* saved_current;
+        } e;
+        struct {
+            const ypath_step_t* steps;
+            uint32_t step_count, step_idx, node_idx, child_idx;
+            ypath_nodebuf_t in, out;
+            cyaml_node_t* filter_node;
+            cyaml_node_t* filter_child;
+            const ypath_expr_t* filter_expr;
+            const cyaml_node_t* saved_current;
+        } p;
+    };
+} ypath_frame_t;
+
+#define YPATH_TRAV_INIT(stk, cnt, cap, on_fail)                            \
+    ypath_trav_frame_t* stk = malloc(YPATH_STACK_INIT_CAP * sizeof(*stk)); \
+    if (!stk) {                                                            \
+        on_fail;                                                           \
+    }                                                                      \
+    size_t cnt = 0, cap = YPATH_STACK_INIT_CAP
+
+#define YPATH_TRAV_PUSH(stk, cnt, cap, nd, on_fail)                        \
+    do {                                                                   \
+        if ((cnt) >= (cap)) {                                              \
+            size_t nc = (cap) * 2;                                         \
+            ypath_trav_frame_t* tmp = realloc((stk), nc * sizeof(*(stk))); \
+            if (!tmp) {                                                    \
+                on_fail;                                                   \
+            }                                                              \
+            (stk) = tmp;                                                   \
+            (cap) = nc;                                                    \
+        }                                                                  \
+        (stk)[(cnt)] = (ypath_trav_frame_t) { (nd), 0, 0 };                \
+        (cnt)++;                                                           \
+    } while (0)
+
+#define YPATH_TRAV_SEQ(f, cur, stk, cnt, cap, on_fail)        \
+    if ((f)->child_idx >= (cur)->seq.count) {                 \
+        (cnt)--;                                              \
+    } else {                                                  \
+        cyaml_node_t* c = (cur)->seq.items[(f)->child_idx++]; \
+        if (c)                                                \
+            YPATH_TRAV_PUSH(stk, cnt, cap, c, on_fail);       \
+    }
+
+#define YPATH_TRAV_MAP_VAL(f, cur, stk, cnt, cap, on_fail)        \
+    if ((f)->child_idx >= (cur)->map.count) {                     \
+        (cnt)--;                                                  \
+    } else {                                                      \
+        cyaml_node_t* c = (cur)->map.pairs[(f)->child_idx++].val; \
+        if (c)                                                    \
+            YPATH_TRAV_PUSH(stk, cnt, cap, c, on_fail);           \
+    }
+
+#define YPATH_TRAV_MAP_ALL(f, cur, stk, cnt, cap, on_fail)        \
+    if ((f)->child_idx >= (cur)->map.count) {                     \
+        (cnt)--;                                                  \
+    } else {                                                      \
+        cyaml_node_t* k = (cur)->map.pairs[(f)->child_idx].key;   \
+        cyaml_node_t* v = (cur)->map.pairs[(f)->child_idx++].val; \
+        if (k)                                                    \
+            YPATH_TRAV_PUSH(stk, cnt, cap, k, on_fail);           \
+        if (v)                                                    \
+            YPATH_TRAV_PUSH(stk, cnt, cap, v, on_fail);           \
+    }
+
+#define YPATH_PUSH_FRAME(stk, sp, cap, frame)                         \
+    do {                                                              \
+        if ((sp) >= (int)(cap)) {                                     \
+            size_t nc = (cap) * 2;                                    \
+            ypath_frame_t* tmp = realloc((stk), nc * sizeof(*(stk))); \
+            if (!tmp)                                                 \
+                goto cleanup;                                         \
+            (stk) = tmp;                                              \
+            (cap) = nc;                                               \
+        }                                                             \
+        (stk)[(sp)++] = (frame);                                      \
+    } while (0)
+
+#define YPATH_PUSH_VAL(vals, vp, cap, v)                              \
+    do {                                                              \
+        if ((vp) >= (int)(cap)) {                                     \
+            size_t nc = (cap) * 2;                                    \
+            ypath_val_t* tmp = realloc((vals), nc * sizeof(*(vals))); \
+            if (!tmp)                                                 \
+                goto cleanup;                                         \
+            (vals) = tmp;                                             \
+            (cap) = nc;                                               \
+        }                                                             \
+        (vals)[(vp)++] = (v);                                         \
+    } while (0)
+
+static inline void ypath_nodebuf_free(ypath_nodebuf_t* b) { free(b->nodes); }
+
+static bool ypath_nodebuf_add(ypath_nodebuf_t* b, cyaml_node_t* n)
 {
     for (uint32_t i = 0; i < b->count; i++)
         if (b->nodes[i] == n)
             return true;
     if (b->count >= b->cap) {
-        uint32_t new_cap = b->cap ? b->cap * 2 : 16;
+        uint32_t new_cap = b->cap ? b->cap * 2 : YPATH_NODEBUF_INIT;
         cyaml_node_t** new_nodes = realloc(b->nodes, new_cap * sizeof(*new_nodes));
         if (!new_nodes)
             return false;
@@ -926,110 +1055,56 @@ static bool nodebuf_add(nodebuf_t* b, cyaml_node_t* n)
     return true;
 }
 
-#define PATH_STACK_INIT_CAP 32
+static inline int64_t ypath_norm_slice_idx(int64_t idx, int64_t len)
+{
+    idx = YPATH_CLAMP(idx, -len, len);
+    return idx < 0 ? idx + len : idx;
+}
 
-typedef struct {
-    cyaml_node_t* node;
-    uint32_t child_idx;
-    uint8_t phase;
-} path_frame_t;
-
-#define STACK_INIT(stk, cnt, cap, on_fail)                          \
-    path_frame_t* stk = malloc(PATH_STACK_INIT_CAP * sizeof(*stk)); \
-    if (!stk) {                                                     \
-        on_fail;                                                    \
-    }                                                               \
-    size_t cnt = 0, cap = PATH_STACK_INIT_CAP
-
-#define STACK_PUSH(stk, cnt, cap, nd, on_fail)                            \
-    do {                                                                  \
-        if ((cnt) >= (cap)) {                                             \
-            size_t new_cap = (cap) * 2;                                   \
-            path_frame_t* tmp = realloc((stk), new_cap * sizeof(*(stk))); \
-            if (!tmp) {                                                   \
-                on_fail;                                                  \
-            }                                                             \
-            (stk) = tmp;                                                  \
-            (cap) = new_cap;                                              \
-        }                                                                 \
-        (stk)[(cnt)] = (path_frame_t) { (nd), 0, 0 };                     \
-        (cnt)++;                                                          \
-    } while (0)
-
-#define STACK_ITER_SEQ(f, cur, stk, cnt, cap, on_fail)        \
-    if ((f)->child_idx >= (cur)->seq.count) {                 \
-        (cnt)--;                                              \
-    } else {                                                  \
-        cyaml_node_t* c = (cur)->seq.items[(f)->child_idx++]; \
-        if (c)                                                \
-            STACK_PUSH(stk, cnt, cap, c, on_fail);            \
-    }
-
-#define STACK_ITER_MAP_VAL(f, cur, stk, cnt, cap, on_fail)        \
-    if ((f)->child_idx >= (cur)->map.count) {                     \
-        (cnt)--;                                                  \
-    } else {                                                      \
-        cyaml_node_t* c = (cur)->map.pairs[(f)->child_idx++].val; \
-        if (c)                                                    \
-            STACK_PUSH(stk, cnt, cap, c, on_fail);                \
-    }
-
-#define STACK_ITER_MAP_ALL(f, cur, stk, cnt, cap, on_fail)        \
-    if ((f)->child_idx >= (cur)->map.count) {                     \
-        (cnt)--;                                                  \
-    } else {                                                      \
-        cyaml_node_t* k = (cur)->map.pairs[(f)->child_idx].key;   \
-        cyaml_node_t* v = (cur)->map.pairs[(f)->child_idx++].val; \
-        if (k)                                                    \
-            STACK_PUSH(stk, cnt, cap, k, on_fail);                \
-        if (v)                                                    \
-            STACK_PUSH(stk, cnt, cap, v, on_fail);                \
-    }
-
-static void collect_all(cyaml_node_t* n, nodebuf_t* b)
+static void ypath_collect_all(cyaml_node_t* n, ypath_nodebuf_t* b)
 {
     if (!n)
         return;
 
-    STACK_INIT(stack, stack_count, stack_cap, return);
-    STACK_PUSH(stack, stack_count, stack_cap, n, { free(stack); return; });
+    YPATH_TRAV_INIT(stack, cnt, cap, return);
+    YPATH_TRAV_PUSH(stack, cnt, cap, n, { free(stack); return; });
 
-    while (stack_count > 0) {
-        path_frame_t* f = &stack[stack_count - 1];
+    while (cnt > 0) {
+        ypath_trav_frame_t* f = &stack[cnt - 1];
         cyaml_node_t* cur = f->node;
 
         if (f->phase == 0) {
-            nodebuf_add(b, cur);
+            ypath_nodebuf_add(b, cur);
             f->phase = 1;
         }
 
         if (cur->type == CYAML_SEQ)
-            STACK_ITER_SEQ(f, cur, stack, stack_count, stack_cap, { free(stack); return; })
+            YPATH_TRAV_SEQ(f, cur, stack, cnt, cap, { free(stack); return; })
         else if (cur->type == CYAML_MAP)
-            STACK_ITER_MAP_VAL(f, cur, stack, stack_count, stack_cap, { free(stack); return; })
+            YPATH_TRAV_MAP_VAL(f, cur, stack, cnt, cap, { free(stack); return; })
         else
-            stack_count--;
+            cnt--;
     }
 
     free(stack);
 }
 
-static cyaml_node_t* find_parent(const cyaml_node_t* root, const cyaml_node_t* child)
+static cyaml_node_t* ypath_find_parent(const cyaml_node_t* root, const cyaml_node_t* child)
 {
     if (!root || root == child)
         return NULL;
 
-    STACK_INIT(stack, stack_count, stack_cap, return NULL);
+    YPATH_TRAV_INIT(stack, cnt, cap, return NULL);
     cyaml_node_t* result = NULL;
-    STACK_PUSH(stack, stack_count, stack_cap, (cyaml_node_t*)root, { free(stack); return NULL; });
+    YPATH_TRAV_PUSH(stack, cnt, cap, (cyaml_node_t*)root, { free(stack); return NULL; });
 
-    while (stack_count > 0) {
-        path_frame_t* f = &stack[stack_count - 1];
+    while (cnt > 0) {
+        ypath_trav_frame_t* f = &stack[cnt - 1];
         cyaml_node_t* cur = f->node;
 
         if (cur->type == CYAML_SEQ) {
             if (f->child_idx >= cur->seq.count) {
-                stack_count--;
+                cnt--;
             } else {
                 cyaml_node_t* c = cur->seq.items[f->child_idx++];
                 if (c == child) {
@@ -1037,11 +1112,11 @@ static cyaml_node_t* find_parent(const cyaml_node_t* root, const cyaml_node_t* c
                     break;
                 }
                 if (c)
-                    STACK_PUSH(stack, stack_count, stack_cap, c, { free(stack); return NULL; });
+                    YPATH_TRAV_PUSH(stack, cnt, cap, c, { free(stack); return NULL; });
             }
         } else if (cur->type == CYAML_MAP) {
             if (f->child_idx >= cur->map.count) {
-                stack_count--;
+                cnt--;
             } else {
                 cyaml_node_t* k = cur->map.pairs[f->child_idx].key;
                 cyaml_node_t* v = cur->map.pairs[f->child_idx++].val;
@@ -1050,12 +1125,12 @@ static cyaml_node_t* find_parent(const cyaml_node_t* root, const cyaml_node_t* c
                     break;
                 }
                 if (k)
-                    STACK_PUSH(stack, stack_count, stack_cap, k, { free(stack); return NULL; });
+                    YPATH_TRAV_PUSH(stack, cnt, cap, k, { free(stack); return NULL; });
                 if (v)
-                    STACK_PUSH(stack, stack_count, stack_cap, v, { free(stack); return NULL; });
+                    YPATH_TRAV_PUSH(stack, cnt, cap, v, { free(stack); return NULL; });
             }
         } else {
-            stack_count--;
+            cnt--;
         }
     }
 
@@ -1063,17 +1138,17 @@ static cyaml_node_t* find_parent(const cyaml_node_t* root, const cyaml_node_t* c
     return result;
 }
 
-static cyaml_node_t* find_anchor(const cyaml_node_t* n, const char* name, uint32_t len, const char* src)
+static cyaml_node_t* ypath_find_anchor(const cyaml_node_t* n, const char* name, uint32_t len, const char* src)
 {
     if (!n)
         return NULL;
 
-    STACK_INIT(stack, stack_count, stack_cap, return NULL);
+    YPATH_TRAV_INIT(stack, cnt, cap, return NULL);
     cyaml_node_t* result = NULL;
-    STACK_PUSH(stack, stack_count, stack_cap, (cyaml_node_t*)n, { free(stack); return NULL; });
+    YPATH_TRAV_PUSH(stack, cnt, cap, (cyaml_node_t*)n, { free(stack); return NULL; });
 
-    while (stack_count > 0) {
-        path_frame_t* f = &stack[stack_count - 1];
+    while (cnt > 0) {
+        ypath_trav_frame_t* f = &stack[cnt - 1];
         cyaml_node_t* cur = f->node;
 
         if (f->phase == 0) {
@@ -1085,18 +1160,18 @@ static cyaml_node_t* find_anchor(const cyaml_node_t* n, const char* name, uint32
         }
 
         if (cur->type == CYAML_SEQ)
-            STACK_ITER_SEQ(f, cur, stack, stack_count, stack_cap, { free(stack); return NULL; })
+            YPATH_TRAV_SEQ(f, cur, stack, cnt, cap, { free(stack); return NULL; })
         else if (cur->type == CYAML_MAP)
-            STACK_ITER_MAP_ALL(f, cur, stack, stack_count, stack_cap, { free(stack); return NULL; })
+            YPATH_TRAV_MAP_ALL(f, cur, stack, cnt, cap, { free(stack); return NULL; })
         else
-            stack_count--;
+            cnt--;
     }
 
     free(stack);
     return result;
 }
 
-static cyaml_node_t* path_resolve_alias(cyaml_node_t* n, const cyaml_node_t* root, const char* src)
+static cyaml_node_t* ypath_resolve_alias(cyaml_node_t* n, const cyaml_node_t* root, const char* src)
 {
     if (!n || n->type != CYAML_ALIAS)
         return n;
@@ -1104,87 +1179,66 @@ static cyaml_node_t* path_resolve_alias(cyaml_node_t* n, const cyaml_node_t* roo
         return n->alias.target;
     if (n->anchor.len == 0)
         return NULL;
-    return find_anchor(root, src + n->anchor.off, n->anchor.len, src);
+    return ypath_find_anchor(root, src + n->anchor.off, n->anchor.len, src);
 }
 
-typedef struct {
-    enum { VAL_NULL,
-        VAL_BOOL,
-        VAL_INT,
-        VAL_FLOAT,
-        VAL_STR,
-        VAL_NODES } type;
-    union {
-        bool b;
-        int64_t i;
-        double f;
-        struct {
-            const char* s;
-            uint32_t len;
-        } str;
-        nodebuf_t nodes;
-    } v;
-} val_t;
-
-#define STR_EQ(s1, l1, s2, l2) ((l1) == (l2) && memcmp((s1), (s2), (l1)) == 0)
-
-static bool str_truthy(const char* s, uint32_t len)
+static bool ypath_str_truthy(const char* s, uint32_t len)
 {
     if (len == 0)
         return false;
-    if (STR_EQ(s, len, S_NULL, L_NULL) || STR_EQ(s, len, S_FALSE, L_FALSE) || STR_EQ(s, len, S_TILDE, L_TILDE) || STR_EQ(s, len, "0", 1))
+    if (YPATH_STR_EQ(s, len, S_NULL, L_NULL) || YPATH_STR_EQ(s, len, S_FALSE, L_FALSE) || YPATH_STR_EQ(s, len, S_TILDE, L_TILDE) || YPATH_STR_EQ(s, len, "0", 1))
         return false;
     return true;
 }
 
-static bool str_null(const char* s, uint32_t len)
+static bool ypath_str_null(const char* s, uint32_t len)
 {
-    return len == 0 || STR_EQ(s, len, S_NULL, L_NULL) || STR_EQ(s, len, S_TILDE, L_TILDE);
+    return len == 0 || YPATH_STR_EQ(s, len, S_NULL, L_NULL) || YPATH_STR_EQ(s, len, S_TILDE, L_TILDE);
 }
 
-static bool val_truthy(const val_t* v, const char* src)
+static bool ypath_val_truthy(const ypath_val_t* v, const char* src)
 {
     switch (v->type) {
-    case VAL_NULL:
+    case YPATH_VAL_NULL:
         return false;
-    case VAL_BOOL:
+    case YPATH_VAL_BOOL:
         return v->v.b;
-    case VAL_INT:
+    case YPATH_VAL_INT:
         return v->v.i != 0;
-    case VAL_FLOAT:
+    case YPATH_VAL_FLOAT:
         return v->v.f != 0.0;
-    case VAL_STR:
-        return str_truthy(v->v.str.s, v->v.str.len);
-    case VAL_NODES:
+    case YPATH_VAL_STR:
+        return ypath_str_truthy(v->v.str.s, v->v.str.len);
+    case YPATH_VAL_NODES:
         if (v->v.nodes.count == 1 && v->v.nodes.nodes[0]->type == CYAML_SCALAR) {
             cyaml_node_t* n = v->v.nodes.nodes[0];
-            return str_truthy(src + n->span.off, n->span.len);
+            return ypath_str_truthy(src + n->span.off, n->span.len);
         }
         return v->v.nodes.count > 0;
     }
     return false;
 }
 
-static double val_float(const val_t* v, const char* src)
+static double ypath_val_float(const ypath_val_t* v, const char* src)
 {
     double f;
+    char buf[YPATH_NUM_BUF_SIZE];
+    uint32_t len;
+
     switch (v->type) {
-    case VAL_INT:
+    case YPATH_VAL_INT:
         return (double)v->v.i;
-    case VAL_FLOAT:
+    case YPATH_VAL_FLOAT:
         return v->v.f;
-    case VAL_STR: {
-        char buf[64];
-        uint32_t len = v->v.str.len < 63 ? v->v.str.len : 63;
+    case YPATH_VAL_STR:
+        len = v->v.str.len < YPATH_NUM_BUF_SIZE - 1 ? v->v.str.len : YPATH_NUM_BUF_SIZE - 1;
         memcpy(buf, v->v.str.s, len);
         buf[len] = 0;
         return cyaml_str_to_f64(buf, NULL, &f) ? f : 0.0;
-    }
-    case VAL_NODES:
+    case YPATH_VAL_NODES:
         if (v->v.nodes.count == 1 && v->v.nodes.nodes[0]->type == CYAML_SCALAR) {
             cyaml_node_t* n = v->v.nodes.nodes[0];
-            char buf[64];
-            uint32_t len = n->span.len < 63 ? n->span.len : 63;
+            len = n->span.len < YPATH_NUM_BUF_SIZE - 1 ? n->span.len : YPATH_NUM_BUF_SIZE - 1;
             memcpy(buf, src + n->span.off, len);
             buf[len] = 0;
             return cyaml_str_to_f64(buf, NULL, &f) ? f : 0.0;
@@ -1195,359 +1249,417 @@ static double val_float(const val_t* v, const char* src)
     }
 }
 
-static bool val_eq(const val_t* a, const val_t* b, const char* src)
+static bool ypath_val_eq(const ypath_val_t* a, const ypath_val_t* b, const char* src)
 {
-    val_t ta = *a, tb = *b;
+    ypath_val_t ta = *a, tb = *b;
 
-    if (a->type == VAL_NODES && a->v.nodes.count == 1) {
+    if (a->type == YPATH_VAL_NODES && a->v.nodes.count == 1) {
         cyaml_node_t* n = a->v.nodes.nodes[0];
         if (n->type == CYAML_SCALAR) {
-            ta.type = VAL_STR;
+            ta.type = YPATH_VAL_STR;
             ta.v.str.s = src + n->span.off;
             ta.v.str.len = n->span.len;
-        } else if (n->type == CYAML_NULL)
-            ta.type = VAL_NULL;
+        } else if (n->type == CYAML_NULL) {
+            ta.type = YPATH_VAL_NULL;
+        }
     }
-    if (b->type == VAL_NODES && b->v.nodes.count == 1) {
+    if (b->type == YPATH_VAL_NODES && b->v.nodes.count == 1) {
         cyaml_node_t* n = b->v.nodes.nodes[0];
         if (n->type == CYAML_SCALAR) {
-            tb.type = VAL_STR;
+            tb.type = YPATH_VAL_STR;
             tb.v.str.s = src + n->span.off;
             tb.v.str.len = n->span.len;
-        } else if (n->type == CYAML_NULL)
-            tb.type = VAL_NULL;
+        } else if (n->type == CYAML_NULL) {
+            tb.type = YPATH_VAL_NULL;
+        }
     }
 
-    if (ta.type == VAL_NULL && tb.type == VAL_NULL)
+    if (ta.type == YPATH_VAL_NULL && tb.type == YPATH_VAL_NULL)
         return true;
-    if (ta.type == VAL_NULL && tb.type == VAL_STR)
-        return str_null(tb.v.str.s, tb.v.str.len);
-    if (tb.type == VAL_NULL && ta.type == VAL_STR)
-        return str_null(ta.v.str.s, ta.v.str.len);
-    if (ta.type == VAL_NULL || tb.type == VAL_NULL)
+    if (ta.type == YPATH_VAL_NULL && tb.type == YPATH_VAL_STR)
+        return ypath_str_null(tb.v.str.s, tb.v.str.len);
+    if (tb.type == YPATH_VAL_NULL && ta.type == YPATH_VAL_STR)
+        return ypath_str_null(ta.v.str.s, ta.v.str.len);
+    if (ta.type == YPATH_VAL_NULL || tb.type == YPATH_VAL_NULL)
         return false;
 
-    if (ta.type == VAL_STR && tb.type == VAL_STR)
-        return STR_EQ(ta.v.str.s, ta.v.str.len, tb.v.str.s, tb.v.str.len);
+    if (ta.type == YPATH_VAL_STR && tb.type == YPATH_VAL_STR)
+        return YPATH_STR_EQ(ta.v.str.s, ta.v.str.len, tb.v.str.s, tb.v.str.len);
 
-    if ((ta.type == VAL_INT || ta.type == VAL_FLOAT) && (tb.type == VAL_INT || tb.type == VAL_FLOAT))
-        return val_float(&ta, src) == val_float(&tb, src);
+    if ((ta.type == YPATH_VAL_INT || ta.type == YPATH_VAL_FLOAT) && (tb.type == YPATH_VAL_INT || tb.type == YPATH_VAL_FLOAT))
+        return ypath_val_float(&ta, src) == ypath_val_float(&tb, src);
 
-    if (ta.type == VAL_BOOL && tb.type == VAL_BOOL)
+    if (ta.type == YPATH_VAL_BOOL && tb.type == YPATH_VAL_BOOL)
         return ta.v.b == tb.v.b;
 
-    if (ta.type == VAL_STR && tb.type == VAL_BOOL) {
-        if (STR_EQ(ta.v.str.s, ta.v.str.len, S_TRUE, L_TRUE))
+    if (ta.type == YPATH_VAL_STR && tb.type == YPATH_VAL_BOOL) {
+        if (YPATH_STR_EQ(ta.v.str.s, ta.v.str.len, S_TRUE, L_TRUE))
             return tb.v.b;
-        if (STR_EQ(ta.v.str.s, ta.v.str.len, S_FALSE, L_FALSE))
+        if (YPATH_STR_EQ(ta.v.str.s, ta.v.str.len, S_FALSE, L_FALSE))
             return !tb.v.b;
         return false;
     }
-    if (tb.type == VAL_STR && ta.type == VAL_BOOL) {
-        if (STR_EQ(tb.v.str.s, tb.v.str.len, S_TRUE, L_TRUE))
+    if (tb.type == YPATH_VAL_STR && ta.type == YPATH_VAL_BOOL) {
+        if (YPATH_STR_EQ(tb.v.str.s, tb.v.str.len, S_TRUE, L_TRUE))
             return ta.v.b;
-        if (STR_EQ(tb.v.str.s, tb.v.str.len, S_FALSE, L_FALSE))
+        if (YPATH_STR_EQ(tb.v.str.s, tb.v.str.len, S_FALSE, L_FALSE))
             return !ta.v.b;
         return false;
     }
 
-    if ((ta.type == VAL_STR || tb.type == VAL_STR) && (ta.type == VAL_INT || ta.type == VAL_FLOAT || tb.type == VAL_INT || tb.type == VAL_FLOAT))
-        return val_float(&ta, src) == val_float(&tb, src);
+    if ((ta.type == YPATH_VAL_STR || tb.type == YPATH_VAL_STR) && (ta.type == YPATH_VAL_INT || ta.type == YPATH_VAL_FLOAT || tb.type == YPATH_VAL_INT || tb.type == YPATH_VAL_FLOAT))
+        return ypath_val_float(&ta, src) == ypath_val_float(&tb, src);
 
     return false;
 }
 
-static val_t eval_expr(eval_t* ctx, const expr_t* e);
-
-static inline void val_free(val_t* v)
+static inline void ypath_val_free(ypath_val_t* v)
 {
-    if (v->type == VAL_NODES)
-        nodebuf_free(&v->v.nodes);
+    if (v->type == YPATH_VAL_NODES)
+        ypath_nodebuf_free(&v->v.nodes);
 }
 
-static val_t eval_path_on(eval_t* ctx, cyaml_node_t* start, const step_t* steps, uint32_t count)
+static ypath_val_t ypath_eval(ypath_ctx_t* ctx, cyaml_node_t* start, const ypath_step_t* steps, uint32_t count)
 {
-    val_t result = { .type = VAL_NODES };
-    nodebuf_t in = { 0 }, out = { 0 };
-    nodebuf_add(&in, start);
-
-    for (uint32_t si = 0; si < count; si++) {
-        const step_t* s = &steps[si];
-        out.count = 0;
-
-        for (uint32_t ni = 0; ni < in.count; ni++) {
-            cyaml_node_t* n = path_resolve_alias(in.nodes[ni], ctx->root, ctx->src);
-            if (!n)
-                continue;
-
-            switch (s->type) {
-            case STEP_IDENTITY:
-                nodebuf_add(&out, n);
-                break;
-            case STEP_PARENT: {
-                cyaml_node_t* p = find_parent(ctx->root, n);
-                if (p)
-                    nodebuf_add(&out, p);
-                break;
-            }
-            case STEP_WILDCARD:
-                if (n->type == CYAML_SEQ)
-                    for (uint32_t i = 0; i < n->seq.count; i++)
-                        nodebuf_add(&out, n->seq.items[i]);
-                else if (n->type == CYAML_MAP)
-                    for (uint32_t i = 0; i < n->map.count; i++)
-                        nodebuf_add(&out, n->map.pairs[i].val);
-                break;
-            case STEP_RECURSIVE:
-                collect_all(n, &out);
-                break;
-            case STEP_NAME:
-                if (n->type == CYAML_MAP && ctx->src)
-                    for (uint32_t i = 0; i < n->map.count; i++) {
-                        cyaml_node_t* k = n->map.pairs[i].key;
-                        if (k && k->type == CYAML_SCALAR && STR_EQ(ctx->src + k->span.off, k->span.len, s->v.name.s, s->v.name.len)) {
-                            nodebuf_add(&out, n->map.pairs[i].val);
-                            break;
-                        }
-                    }
-                break;
-            case STEP_ALIAS:
-                if (ctx->src) {
-                    cyaml_node_t* f = find_anchor(ctx->root, s->v.name.s, s->v.name.len, ctx->src);
-                    if (f)
-                        nodebuf_add(&out, f);
-                }
-                break;
-            case STEP_INDEX:
-                if (n->type == CYAML_SEQ) {
-                    int64_t idx = s->v.idx;
-                    if (idx < 0)
-                        idx += (int64_t)n->seq.count;
-                    if (idx >= 0 && idx < (int64_t)n->seq.count)
-                        nodebuf_add(&out, n->seq.items[idx]);
-                }
-                break;
-            case STEP_SLICE:
-                if (n->type == CYAML_SEQ) {
-                    int64_t len = (int64_t)n->seq.count;
-                    int64_t ss = (s->v.slice.flags & 1) ? s->v.slice.start : 0;
-                    int64_t se = (s->v.slice.flags & 2) ? s->v.slice.end : len;
-                    int64_t st = (s->v.slice.flags & 4) ? s->v.slice.step : 1;
-                    if (st == 0)
-                        st = 1;
-                    if (st > 0) {
-                        ss = norm_slice_idx(ss, len);
-                        se = norm_slice_idx(se, len);
-                        for (int64_t i = ss; i < se; i += st)
-                            nodebuf_add(&out, n->seq.items[i]);
-                    } else {
-                        ss = (s->v.slice.flags & 1) ? CLAMP(s->v.slice.start, -len, len - 1) : len - 1;
-                        se = (s->v.slice.flags & 2) ? CLAMP(s->v.slice.end, -len - 1, len) : -len - 1;
-                        if (ss < 0)
-                            ss += len;
-                        if (se < -1)
-                            se += len;
-                        for (int64_t i = ss; i > se && i >= 0; i += st)
-                            nodebuf_add(&out, n->seq.items[i]);
-                    }
-                }
-                break;
-            case STEP_FILTER: {
-                eval_t fc = *ctx;
-                if (n->type == CYAML_SEQ) {
-                    for (uint32_t i = 0; i < n->seq.count; i++) {
-                        fc.current = n->seq.items[i];
-                        val_t v = eval_expr(&fc, s->v.filter);
-                        if (val_truthy(&v, ctx->src))
-                            nodebuf_add(&out, n->seq.items[i]);
-                        val_free(&v);
-                    }
-                } else if (n->type == CYAML_MAP) {
-                    for (uint32_t i = 0; i < n->map.count; i++) {
-                        fc.current = n->map.pairs[i].val;
-                        val_t v = eval_expr(&fc, s->v.filter);
-                        if (val_truthy(&v, ctx->src))
-                            nodebuf_add(&out, n->map.pairs[i].val);
-                        val_free(&v);
-                    }
-                } else {
-                    fc.current = n;
-                    val_t v = eval_expr(&fc, s->v.filter);
-                    if (val_truthy(&v, ctx->src))
-                        nodebuf_add(&out, n);
-                    val_free(&v);
-                }
-                break;
-            }
-            }
-        }
-        nodebuf_t tmp = in;
-        in = out;
-        out = tmp;
-        out.count = 0;
+    size_t stack_cap = YPATH_STACK_INIT_CAP, vals_cap = YPATH_STACK_INIT_CAP;
+    ypath_frame_t* stack = malloc(stack_cap * sizeof(*stack));
+    ypath_val_t* vals = malloc(vals_cap * sizeof(*vals));
+    if (!stack || !vals) {
+        free(stack);
+        free(vals);
+        return (ypath_val_t) { .type = YPATH_VAL_NULL };
     }
-    nodebuf_free(&out);
-    result.v.nodes = in;
-    return result;
-}
-
-#define EVAL_STACK_CAP 64
-
-typedef struct {
-    const expr_t* expr;
-    uint8_t phase;
-} eval_frame_t;
-
-static val_t eval_expr(eval_t* ctx, const expr_t* e)
-{
-    eval_frame_t stack[EVAL_STACK_CAP];
-    val_t vals[EVAL_STACK_CAP];
     int sp = 0, vp = 0;
 
-    stack[sp++] = (eval_frame_t) { e, 0 };
+    ypath_frame_t init = { .type = YPATH_FRAME_PATH, .phase = 0 };
+    init.p.steps = steps;
+    init.p.step_count = count;
+    init.p.step_idx = 0;
+    init.p.node_idx = 0;
+    init.p.child_idx = 0;
+    init.p.in = (ypath_nodebuf_t) { 0 };
+    init.p.out = (ypath_nodebuf_t) { 0 };
+    init.p.filter_node = NULL;
+    init.p.filter_child = NULL;
+    init.p.filter_expr = NULL;
+    init.p.saved_current = ctx->current;
+    ypath_nodebuf_add(&init.p.in, start);
+    YPATH_PUSH_FRAME(stack, sp, stack_cap, init);
 
     while (sp > 0) {
-        eval_frame_t* f = &stack[sp - 1];
-        const expr_t* cur = f->expr;
+        ypath_frame_t* f = &stack[sp - 1];
 
-        switch (cur->type) {
-        case EXPR_INT:
-            sp--;
-            vals[vp++] = (val_t) { .type = VAL_INT, .v.i = cur->v.i };
-            break;
-        case EXPR_FLOAT:
-            sp--;
-            vals[vp++] = (val_t) { .type = VAL_FLOAT, .v.f = cur->v.f };
-            break;
-        case EXPR_STRING:
-            sp--;
-            vals[vp++] = (val_t) { .type = VAL_STR, .v.str = { cur->v.str.s, cur->v.str.len } };
-            break;
-        case EXPR_BOOL:
-            sp--;
-            vals[vp++] = (val_t) { .type = VAL_BOOL, .v.b = cur->v.b };
-            break;
-        case EXPR_NULL:
-            sp--;
-            vals[vp++] = (val_t) { .type = VAL_NULL };
-            break;
-        case EXPR_PATH:
-            sp--;
-            if (ctx->current)
-                vals[vp++] = eval_path_on(ctx, (cyaml_node_t*)ctx->current, cur->v.path.steps, cur->v.path.count);
-            else
-                vals[vp++] = (val_t) { .type = VAL_NULL };
-            break;
-        case EXPR_UNARY:
-            if (f->phase == 0) {
-                f->phase = 1;
-                if (sp >= EVAL_STACK_CAP)
-                    goto overflow;
-                stack[sp++] = (eval_frame_t) { cur->v.unary.arg, 0 };
-            } else {
+        if (f->type == YPATH_FRAME_EXPR) {
+            const ypath_expr_t* cur = f->e.expr;
+            switch (cur->type) {
+            case YPATH_EXPR_INT:
                 sp--;
-                val_t arg = vals[--vp];
-                val_t r;
-                if (cur->v.unary.op == OP_NEG) {
-                    r.type = VAL_FLOAT;
-                    r.v.f = -val_float(&arg, ctx->src);
-                } else {
-                    r.type = VAL_BOOL;
-                    r.v.b = !val_truthy(&arg, ctx->src);
-                }
-                val_free(&arg);
-                vals[vp++] = r;
-            }
-            break;
-        case EXPR_BINARY:
-            if (f->phase == 0) {
-                f->phase = 1;
-                if (sp >= EVAL_STACK_CAP)
-                    goto overflow;
-                stack[sp++] = (eval_frame_t) { cur->v.binary.left, 0 };
-            } else if (f->phase == 1) {
-                val_t left = vals[vp - 1];
-                bool left_truthy = val_truthy(&left, ctx->src);
-                if (cur->v.binary.op == OP_AND && !left_truthy) {
-                    sp--;
-                    vals[vp - 1] = (val_t) { .type = VAL_BOOL, .v.b = false };
-                    val_free(&left);
-                } else if (cur->v.binary.op == OP_OR && left_truthy) {
-                    sp--;
-                    vals[vp - 1] = (val_t) { .type = VAL_BOOL, .v.b = true };
-                    val_free(&left);
-                } else {
-                    f->phase = 2;
-                    if (sp >= EVAL_STACK_CAP)
-                        goto overflow;
-                    stack[sp++] = (eval_frame_t) { cur->v.binary.right, 0 };
-                }
-            } else {
+                YPATH_PUSH_VAL(vals, vp, vals_cap, ((ypath_val_t) { .type = YPATH_VAL_INT, .v.i = cur->v.i }));
+                break;
+            case YPATH_EXPR_FLOAT:
                 sp--;
-                val_t right = vals[--vp];
-                val_t left = vals[--vp];
-                val_t r = { .type = VAL_BOOL };
-                switch (cur->v.binary.op) {
-                case OP_OR:
-                    r.v.b = val_truthy(&left, ctx->src) || val_truthy(&right, ctx->src);
-                    break;
-                case OP_AND:
-                    r.v.b = val_truthy(&left, ctx->src) && val_truthy(&right, ctx->src);
-                    break;
-                case OP_EQ:
-                    r.v.b = val_eq(&left, &right, ctx->src);
-                    break;
-                case OP_NE:
-                    r.v.b = !val_eq(&left, &right, ctx->src);
-                    break;
-                case OP_LT:
-                    r.v.b = val_float(&left, ctx->src) < val_float(&right, ctx->src);
-                    break;
-                case OP_LE:
-                    r.v.b = val_float(&left, ctx->src) <= val_float(&right, ctx->src);
-                    break;
-                case OP_GT:
-                    r.v.b = val_float(&left, ctx->src) > val_float(&right, ctx->src);
-                    break;
-                case OP_GE:
-                    r.v.b = val_float(&left, ctx->src) >= val_float(&right, ctx->src);
-                    break;
-                case OP_ADD:
-                    r.type = VAL_FLOAT;
-                    r.v.f = val_float(&left, ctx->src) + val_float(&right, ctx->src);
-                    break;
-                case OP_SUB:
-                    r.type = VAL_FLOAT;
-                    r.v.f = val_float(&left, ctx->src) - val_float(&right, ctx->src);
-                    break;
-                case OP_MUL:
-                    r.type = VAL_FLOAT;
-                    r.v.f = val_float(&left, ctx->src) * val_float(&right, ctx->src);
-                    break;
-                case OP_DIV: {
-                    double d = val_float(&right, ctx->src);
-                    r.type = VAL_FLOAT;
-                    r.v.f = (d != 0.0) ? val_float(&left, ctx->src) / d : 0.0;
-                    break;
+                YPATH_PUSH_VAL(vals, vp, vals_cap, ((ypath_val_t) { .type = YPATH_VAL_FLOAT, .v.f = cur->v.f }));
+                break;
+            case YPATH_EXPR_STRING:
+                sp--;
+                YPATH_PUSH_VAL(vals, vp, vals_cap, ((ypath_val_t) { .type = YPATH_VAL_STR, .v.str = { cur->v.str.s, cur->v.str.len } }));
+                break;
+            case YPATH_EXPR_BOOL:
+                sp--;
+                YPATH_PUSH_VAL(vals, vp, vals_cap, ((ypath_val_t) { .type = YPATH_VAL_BOOL, .v.b = cur->v.b }));
+                break;
+            case YPATH_EXPR_NULL:
+                sp--;
+                YPATH_PUSH_VAL(vals, vp, vals_cap, ((ypath_val_t) { .type = YPATH_VAL_NULL }));
+                break;
+            case YPATH_EXPR_PATH:
+                if (!ctx->current) {
+                    sp--;
+                    YPATH_PUSH_VAL(vals, vp, vals_cap, ((ypath_val_t) { .type = YPATH_VAL_NULL }));
+                } else {
+                    f->type = YPATH_FRAME_PATH;
+                    f->phase = 0;
+                    f->p.steps = cur->v.path.steps;
+                    f->p.step_count = cur->v.path.count;
+                    f->p.step_idx = 0;
+                    f->p.node_idx = 0;
+                    f->p.child_idx = 0;
+                    f->p.in = (ypath_nodebuf_t) { 0 };
+                    f->p.out = (ypath_nodebuf_t) { 0 };
+                    f->p.filter_node = NULL;
+                    f->p.filter_child = NULL;
+                    f->p.filter_expr = NULL;
+                    f->p.saved_current = ctx->current;
+                    ypath_nodebuf_add(&f->p.in, (cyaml_node_t*)ctx->current);
                 }
-                case OP_NEG:
-                case OP_NOT:
-                    break;
+                break;
+            case YPATH_EXPR_UNARY:
+                if (f->phase == 0) {
+                    f->phase = 1;
+                    ypath_frame_t nf = { .type = YPATH_FRAME_EXPR, .phase = 0 };
+                    nf.e.expr = cur->v.unary.arg;
+                    nf.e.saved_current = f->e.saved_current;
+                    YPATH_PUSH_FRAME(stack, sp, stack_cap, nf);
+                } else {
+                    sp--;
+                    ypath_val_t arg = vals[--vp];
+                    ypath_val_t r;
+                    if (cur->v.unary.op == YPATH_OP_NEG) {
+                        r.type = YPATH_VAL_FLOAT;
+                        r.v.f = -ypath_val_float(&arg, ctx->src);
+                    } else {
+                        r.type = YPATH_VAL_BOOL;
+                        r.v.b = !ypath_val_truthy(&arg, ctx->src);
+                    }
+                    ypath_val_free(&arg);
+                    YPATH_PUSH_VAL(vals, vp, vals_cap, r);
                 }
-                val_free(&left);
-                val_free(&right);
-                vals[vp++] = r;
+                break;
+            case YPATH_EXPR_BINARY:
+                if (f->phase == 0) {
+                    f->phase = 1;
+                    ypath_frame_t nf = { .type = YPATH_FRAME_EXPR, .phase = 0 };
+                    nf.e.expr = cur->v.binary.left;
+                    nf.e.saved_current = f->e.saved_current;
+                    YPATH_PUSH_FRAME(stack, sp, stack_cap, nf);
+                } else if (f->phase == 1) {
+                    ypath_val_t left = vals[vp - 1];
+                    bool lt = ypath_val_truthy(&left, ctx->src);
+                    if (cur->v.binary.op == YPATH_OP_AND && !lt) {
+                        sp--;
+                        ypath_val_free(&vals[vp - 1]);
+                        vals[vp - 1] = (ypath_val_t) { .type = YPATH_VAL_BOOL, .v.b = false };
+                    } else if (cur->v.binary.op == YPATH_OP_OR && lt) {
+                        sp--;
+                        ypath_val_free(&vals[vp - 1]);
+                        vals[vp - 1] = (ypath_val_t) { .type = YPATH_VAL_BOOL, .v.b = true };
+                    } else {
+                        f->phase = 2;
+                        ypath_frame_t nf = { .type = YPATH_FRAME_EXPR, .phase = 0 };
+                        nf.e.expr = cur->v.binary.right;
+                        nf.e.saved_current = f->e.saved_current;
+                        YPATH_PUSH_FRAME(stack, sp, stack_cap, nf);
+                    }
+                } else {
+                    sp--;
+                    ypath_val_t right = vals[--vp];
+                    ypath_val_t left = vals[--vp];
+                    ypath_val_t r = { .type = YPATH_VAL_BOOL };
+                    switch (cur->v.binary.op) {
+                    case YPATH_OP_OR:
+                        r.v.b = ypath_val_truthy(&left, ctx->src) || ypath_val_truthy(&right, ctx->src);
+                        break;
+                    case YPATH_OP_AND:
+                        r.v.b = ypath_val_truthy(&left, ctx->src) && ypath_val_truthy(&right, ctx->src);
+                        break;
+                    case YPATH_OP_EQ:
+                        r.v.b = ypath_val_eq(&left, &right, ctx->src);
+                        break;
+                    case YPATH_OP_NE:
+                        r.v.b = !ypath_val_eq(&left, &right, ctx->src);
+                        break;
+                    case YPATH_OP_LT:
+                        r.v.b = ypath_val_float(&left, ctx->src) < ypath_val_float(&right, ctx->src);
+                        break;
+                    case YPATH_OP_LE:
+                        r.v.b = ypath_val_float(&left, ctx->src) <= ypath_val_float(&right, ctx->src);
+                        break;
+                    case YPATH_OP_GT:
+                        r.v.b = ypath_val_float(&left, ctx->src) > ypath_val_float(&right, ctx->src);
+                        break;
+                    case YPATH_OP_GE:
+                        r.v.b = ypath_val_float(&left, ctx->src) >= ypath_val_float(&right, ctx->src);
+                        break;
+                    case YPATH_OP_ADD:
+                        r.type = YPATH_VAL_FLOAT;
+                        r.v.f = ypath_val_float(&left, ctx->src) + ypath_val_float(&right, ctx->src);
+                        break;
+                    case YPATH_OP_SUB:
+                        r.type = YPATH_VAL_FLOAT;
+                        r.v.f = ypath_val_float(&left, ctx->src) - ypath_val_float(&right, ctx->src);
+                        break;
+                    case YPATH_OP_MUL:
+                        r.type = YPATH_VAL_FLOAT;
+                        r.v.f = ypath_val_float(&left, ctx->src) * ypath_val_float(&right, ctx->src);
+                        break;
+                    case YPATH_OP_DIV: {
+                        double d = ypath_val_float(&right, ctx->src);
+                        r.type = YPATH_VAL_FLOAT;
+                        r.v.f = d != 0.0 ? ypath_val_float(&left, ctx->src) / d : 0.0;
+                        break;
+                    }
+                    default:
+                        break;
+                    }
+                    ypath_val_free(&left);
+                    ypath_val_free(&right);
+                    YPATH_PUSH_VAL(vals, vp, vals_cap, r);
+                }
+                break;
             }
-            break;
+        } else {
+            if (f->phase == 1) {
+                ypath_val_t fv = vals[--vp];
+                ctx->current = f->p.saved_current;
+                if (ypath_val_truthy(&fv, ctx->src))
+                    ypath_nodebuf_add(&f->p.out, f->p.filter_child);
+                ypath_val_free(&fv);
+                f->p.child_idx++;
+                f->phase = 0;
+            }
+
+            while (f->p.step_idx < f->p.step_count) {
+                const ypath_step_t* s = &f->p.steps[f->p.step_idx];
+
+                while (f->p.node_idx < f->p.in.count) {
+                    cyaml_node_t* n = ypath_resolve_alias(f->p.in.nodes[f->p.node_idx], ctx->root, ctx->src);
+                    if (!n) {
+                        f->p.node_idx++;
+                        continue;
+                    }
+
+                    if (s->type == YPATH_STEP_FILTER) {
+                        uint32_t cc = (n->type == CYAML_SEQ) ? n->seq.count : (n->type == CYAML_MAP) ? n->map.count
+                                                                                                     : 1;
+
+                        while (f->p.child_idx < cc) {
+                            cyaml_node_t* child;
+                            if (n->type == CYAML_SEQ)
+                                child = n->seq.items[f->p.child_idx];
+                            else if (n->type == CYAML_MAP)
+                                child = n->map.pairs[f->p.child_idx].val;
+                            else
+                                child = n;
+
+                            f->p.filter_node = n;
+                            f->p.filter_child = child;
+                            f->p.filter_expr = s->v.filter;
+                            f->p.saved_current = ctx->current;
+                            ctx->current = child;
+                            f->phase = 1;
+
+                            ypath_frame_t ef = { .type = YPATH_FRAME_EXPR, .phase = 0 };
+                            ef.e.expr = s->v.filter;
+                            ef.e.saved_current = child;
+                            YPATH_PUSH_FRAME(stack, sp, stack_cap, ef);
+                            goto next_iter;
+                        }
+                        f->p.child_idx = 0;
+                        f->p.node_idx++;
+                        continue;
+                    }
+
+                    switch (s->type) {
+                    case YPATH_STEP_IDENTITY:
+                        ypath_nodebuf_add(&f->p.out, n);
+                        break;
+                    case YPATH_STEP_PARENT: {
+                        cyaml_node_t* p = ypath_find_parent(ctx->root, n);
+                        if (p)
+                            ypath_nodebuf_add(&f->p.out, p);
+                        break;
+                    }
+                    case YPATH_STEP_WILDCARD:
+                        if (n->type == CYAML_SEQ)
+                            for (uint32_t i = 0; i < n->seq.count; i++)
+                                ypath_nodebuf_add(&f->p.out, n->seq.items[i]);
+                        else if (n->type == CYAML_MAP)
+                            for (uint32_t i = 0; i < n->map.count; i++)
+                                ypath_nodebuf_add(&f->p.out, n->map.pairs[i].val);
+                        break;
+                    case YPATH_STEP_RECURSIVE:
+                        ypath_collect_all(n, &f->p.out);
+                        break;
+                    case YPATH_STEP_NAME:
+                        if (n->type == CYAML_MAP && ctx->src)
+                            for (uint32_t i = 0; i < n->map.count; i++) {
+                                cyaml_node_t* k = n->map.pairs[i].key;
+                                if (k && k->type == CYAML_SCALAR && YPATH_STR_EQ(ctx->src + k->span.off, k->span.len, s->v.name.s, s->v.name.len)) {
+                                    ypath_nodebuf_add(&f->p.out, n->map.pairs[i].val);
+                                    break;
+                                }
+                            }
+                        break;
+                    case YPATH_STEP_ALIAS:
+                        if (ctx->src) {
+                            cyaml_node_t* found = ypath_find_anchor(ctx->root, s->v.name.s, s->v.name.len, ctx->src);
+                            if (found)
+                                ypath_nodebuf_add(&f->p.out, found);
+                        }
+                        break;
+                    case YPATH_STEP_INDEX:
+                        if (n->type == CYAML_SEQ) {
+                            int64_t idx = s->v.idx;
+                            if (idx < 0)
+                                idx += (int64_t)n->seq.count;
+                            if (idx >= 0 && idx < (int64_t)n->seq.count)
+                                ypath_nodebuf_add(&f->p.out, n->seq.items[idx]);
+                        }
+                        break;
+                    case YPATH_STEP_SLICE:
+                        if (n->type == CYAML_SEQ) {
+                            int64_t len = (int64_t)n->seq.count;
+                            int64_t ss = (s->v.slice.flags & YPATH_SLICE_HAS_START) ? s->v.slice.start : 0;
+                            int64_t se = (s->v.slice.flags & YPATH_SLICE_HAS_END) ? s->v.slice.end : len;
+                            int64_t st = (s->v.slice.flags & YPATH_SLICE_HAS_STEP) ? s->v.slice.step : 1;
+                            if (st == 0)
+                                st = 1;
+                            if (st > 0) {
+                                ss = ypath_norm_slice_idx(ss, len);
+                                se = ypath_norm_slice_idx(se, len);
+                                for (int64_t i = ss; i < se; i += st)
+                                    ypath_nodebuf_add(&f->p.out, n->seq.items[i]);
+                            } else {
+                                ss = (s->v.slice.flags & YPATH_SLICE_HAS_START) ? YPATH_CLAMP(s->v.slice.start, -len, len - 1) : len - 1;
+                                se = (s->v.slice.flags & YPATH_SLICE_HAS_END) ? YPATH_CLAMP(s->v.slice.end, -len - 1, len) : -len - 1;
+                                if (ss < 0)
+                                    ss += len;
+                                if (se < -1)
+                                    se += len;
+                                for (int64_t i = ss; i > se && i >= 0; i += st)
+                                    ypath_nodebuf_add(&f->p.out, n->seq.items[i]);
+                            }
+                        }
+                        break;
+                    case YPATH_STEP_FILTER:
+                        break;
+                    }
+                    f->p.node_idx++;
+                }
+
+                ypath_nodebuf_t tmp = f->p.in;
+                f->p.in = f->p.out;
+                f->p.out = tmp;
+                f->p.out.count = 0;
+                f->p.step_idx++;
+                f->p.node_idx = 0;
+            }
+
+            ctx->current = f->p.saved_current;
+            ypath_nodebuf_free(&f->p.out);
+            ypath_val_t result = { .type = YPATH_VAL_NODES, .v.nodes = f->p.in };
+            sp--;
+            YPATH_PUSH_VAL(vals, vp, vals_cap, result);
         }
+    next_iter:;
     }
 
-    return vp > 0 ? vals[0] : (val_t) { .type = VAL_NULL };
+    ypath_val_t result = vp > 0 ? vals[0] : (ypath_val_t) { .type = YPATH_VAL_NULL };
+    free(stack);
+    free(vals);
+    return result;
 
-overflow:
+cleanup:
     while (vp > 0)
-        val_free(&vals[--vp]);
-    return (val_t) { .type = VAL_NULL };
+        ypath_val_free(&vals[--vp]);
+    for (int i = 0; i < sp; i++)
+        if (stack[i].type == YPATH_FRAME_PATH) {
+            ypath_nodebuf_free(&stack[i].p.in);
+            ypath_nodebuf_free(&stack[i].p.out);
+        }
+    free(stack);
+    free(vals);
+    return (ypath_val_t) { .type = YPATH_VAL_NULL };
 }
 
 // #endregion
@@ -1569,36 +1681,36 @@ CYAML_API cyaml_path_result_t cyaml_path_query(const cyaml_doc_t* doc, const cya
         return result;
     }
 
-    expr_pool_t pool = { 0 };
-    path_parser_t parser = { .pool = &pool };
-    lex_init(&parser.lex, path);
-    lex_next(&parser.lex);
+    ypath_pool_t pool = { 0 };
+    ypath_parser_t parser = { .pool = &pool };
+    ypath_lex_init(&parser.lex, path);
+    ypath_lex_next(&parser.lex);
 
-    path_t parsed;
-    if (!parse_path(&parser, &parsed) || parser.error) {
+    ypath_path_t parsed;
+    if (!ypath_parse_path(&parser, &parsed) || parser.error) {
         result.error = parser.error ? parser.error : "parse error";
         result.error_pos = parser.error_pos;
         return result;
     }
 
-    if (parser.lex.tok.type != TOK_EOF) {
+    if (parser.lex.tok.type != YPATH_TOK_EOF) {
         result.error = "unexpected token";
         result.error_pos = (uint32_t)(parser.lex.tok.start - path);
         return result;
     }
 
-    eval_t ctx = { .doc = doc, .root = doc->root, .current = context, .src = cyaml_src(doc) };
+    ypath_ctx_t ctx = { .doc = doc, .root = doc->root, .current = context, .src = cyaml_src(doc) };
     cyaml_node_t* start = parsed.absolute ? (cyaml_node_t*)doc->root : (cyaml_node_t*)context;
-    val_t val = eval_path_on(&ctx, start, parsed.steps, parsed.count);
+    ypath_val_t val = ypath_eval(&ctx, start, parsed.steps, parsed.count);
 
-    if (val.type == VAL_NODES && val.v.nodes.count > 0) {
+    if (val.type == YPATH_VAL_NODES && val.v.nodes.count > 0) {
         result.nodes = malloc(val.v.nodes.count * sizeof(cyaml_node_t*));
         if (result.nodes) {
             memcpy(result.nodes, val.v.nodes.nodes, val.v.nodes.count * sizeof(cyaml_node_t*));
             result.count = val.v.nodes.count;
         }
     }
-    val_free(&val);
+    ypath_val_free(&val);
     return result;
 }
 
@@ -1625,7 +1737,7 @@ CYAML_API cyaml_node_t* cyaml_path_first(const cyaml_doc_t* doc, const cyaml_nod
 
 #ifdef CYAML_DEBUG
 
-static const char* tok_name(tok_t t)
+static const char* ypath_tok_name(ypath_tok_t t)
 {
     static const char* names[] = {
         "EOF", "SLASH", "DOT", "DOTDOT", "STAR", "STARSTAR", "LBRACKET", "RBRACKET",
@@ -1636,29 +1748,29 @@ static const char* tok_name(tok_t t)
     return t < sizeof(names) / sizeof(names[0]) ? names[t] : "?";
 }
 
-static void print_expr(const expr_t* e, int ind);
+static void ypath_print_expr(const ypath_expr_t* e, int ind);
 
-static void print_steps(const step_t* steps, uint32_t n, int ind)
+static void ypath_print_steps(const ypath_step_t* steps, uint32_t n, int ind)
 {
     static const char* snames[] = { "IDENTITY", "PARENT", "WILDCARD", "RECURSIVE", "NAME", "ALIAS", "INDEX", "SLICE", "FILTER" };
     for (uint32_t i = 0; i < n; i++) {
-        const step_t* s = &steps[i];
+        const ypath_step_t* s = &steps[i];
         for (int j = 0; j < ind; j++)
             printf("  ");
         printf("%s", snames[s->type]);
-        if (s->type == STEP_NAME || s->type == STEP_ALIAS)
+        if (s->type == YPATH_STEP_NAME || s->type == YPATH_STEP_ALIAS)
             printf(" '%.*s'", (int)s->v.name.len, s->v.name.s);
-        else if (s->type == STEP_INDEX)
+        else if (s->type == YPATH_STEP_INDEX)
             printf(" [%lld]", (long long)s->v.idx);
-        else if (s->type == STEP_SLICE)
+        else if (s->type == YPATH_STEP_SLICE)
             printf(" [%lld:%lld:%lld]", (long long)s->v.slice.start, (long long)s->v.slice.end, (long long)s->v.slice.step);
         printf("\n");
-        if (s->type == STEP_FILTER)
-            print_expr(s->v.filter, ind + 1);
+        if (s->type == YPATH_STEP_FILTER)
+            ypath_print_expr(s->v.filter, ind + 1);
     }
 }
 
-static void print_expr(const expr_t* e, int ind)
+static void ypath_print_expr(const ypath_expr_t* e, int ind)
 {
     for (int i = 0; i < ind; i++)
         printf("  ");
@@ -1668,33 +1780,33 @@ static void print_expr(const expr_t* e, int ind)
     }
     static const char* ops[] = { "OR", "AND", "EQ", "NE", "LT", "LE", "GT", "GE", "ADD", "SUB", "MUL", "DIV", "NEG", "NOT" };
     switch (e->type) {
-    case EXPR_INT:
+    case YPATH_EXPR_INT:
         printf("INT %lld\n", (long long)e->v.i);
         break;
-    case EXPR_FLOAT:
+    case YPATH_EXPR_FLOAT:
         printf("FLOAT %f\n", e->v.f);
         break;
-    case EXPR_STRING:
+    case YPATH_EXPR_STRING:
         printf("STRING '%.*s'\n", (int)e->v.str.len, e->v.str.s);
         break;
-    case EXPR_BOOL:
+    case YPATH_EXPR_BOOL:
         printf("BOOL %s\n", e->v.b ? S_TRUE : S_FALSE);
         break;
-    case EXPR_NULL:
+    case YPATH_EXPR_NULL:
         printf("NULL\n");
         break;
-    case EXPR_PATH:
+    case YPATH_EXPR_PATH:
         printf("PATH (%u steps)\n", e->v.path.count);
-        print_steps(e->v.path.steps, e->v.path.count, ind + 1);
+        ypath_print_steps(e->v.path.steps, e->v.path.count, ind + 1);
         break;
-    case EXPR_UNARY:
+    case YPATH_EXPR_UNARY:
         printf("UNARY %s\n", ops[e->v.unary.op]);
-        print_expr(e->v.unary.arg, ind + 1);
+        ypath_print_expr(e->v.unary.arg, ind + 1);
         break;
-    case EXPR_BINARY:
+    case YPATH_EXPR_BINARY:
         printf("BINARY %s\n", ops[e->v.binary.op]);
-        print_expr(e->v.binary.left, ind + 1);
-        print_expr(e->v.binary.right, ind + 1);
+        ypath_print_expr(e->v.binary.left, ind + 1);
+        ypath_print_expr(e->v.binary.right, ind + 1);
         break;
     }
 }
@@ -1707,33 +1819,33 @@ CYAML_API void cyaml_path_debug(const char* path)
     }
     printf("=== Tokens ===\nInput: %s\n", path);
 
-    lexer_t l;
-    lex_init(&l, path);
-    lex_next(&l);
-    while (l.tok.type != TOK_EOF && l.tok.type != TOK_ERROR) {
-        printf("  %-12s '%.*s'", tok_name(l.tok.type), (int)l.tok.len, l.tok.start);
-        if (l.tok.type == TOK_INT)
+    ypath_lexer_t l;
+    ypath_lex_init(&l, path);
+    ypath_lex_next(&l);
+    while (l.tok.type != YPATH_TOK_EOF && l.tok.type != YPATH_TOK_ERROR) {
+        printf("  %-12s '%.*s'", ypath_tok_name(l.tok.type), (int)l.tok.len, l.tok.start);
+        if (l.tok.type == YPATH_TOK_INT)
             printf(" (val=%lld)", (long long)l.tok.val.i);
-        if (l.tok.type == TOK_FLOAT)
+        if (l.tok.type == YPATH_TOK_FLOAT)
             printf(" (val=%f)", l.tok.val.f);
         printf("\n");
-        lex_next(&l);
+        ypath_lex_next(&l);
     }
-    if (l.tok.type == TOK_ERROR)
+    if (l.tok.type == YPATH_TOK_ERROR)
         printf("  ERROR: %s\n", l.error);
     printf("  EOF\n\n=== AST ===\n");
 
-    expr_pool_t pool = { 0 };
-    path_parser_t p = { .pool = &pool };
-    lex_init(&p.lex, path);
-    lex_next(&p.lex);
-    path_t parsed;
-    if (!parse_path(&p, &parsed) || p.error) {
+    ypath_pool_t pool = { 0 };
+    ypath_parser_t p = { .pool = &pool };
+    ypath_lex_init(&p.lex, path);
+    ypath_lex_next(&p.lex);
+    ypath_path_t parsed;
+    if (!ypath_parse_path(&p, &parsed) || p.error) {
         printf("Parse error: %s at pos %u\n", p.error ? p.error : "unknown", p.error_pos);
         return;
     }
     printf("Path: absolute=%s, steps=%u\n", parsed.absolute ? "yes" : "no", parsed.count);
-    print_steps(parsed.steps, parsed.count, 1);
+    ypath_print_steps(parsed.steps, parsed.count, 1);
 }
 
 #else
