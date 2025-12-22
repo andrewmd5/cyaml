@@ -726,14 +726,6 @@ static ypath_expr_t* ypath_parse_primary(ypath_parser_t* p)
         e->v.path.count = p->pool->step_count - start_count;
         return e;
     }
-    case YPATH_TOK_LPAREN:
-        ypath_lex_next(&p->lex);
-        e = ypath_parse_expr(p);
-        if (!e)
-            return NULL;
-        if (!ypath_expect(p, YPATH_TOK_RPAREN))
-            return NULL;
-        return e;
     default:
         ypath_parse_err(p, "expected expression");
         return NULL;
@@ -802,6 +794,7 @@ typedef struct {
     ypath_op_t op;
     int prec;
     bool unary;
+    bool paren;
 } ypath_op_entry_t;
 
 typedef struct {
@@ -846,16 +839,22 @@ static ypath_expr_t* ypath_parse_expr(ypath_parser_t* p)
 {
     ypath_expr_stack_t s = { .operand_count = 0, .op_count = 0 };
     bool expect_operand = true;
+    int paren_depth = 0;
 
     for (;;) {
         if (expect_operand) {
-            while (p->lex.tok.type == YPATH_TOK_MINUS || p->lex.tok.type == YPATH_TOK_BANG) {
+            while (p->lex.tok.type == YPATH_TOK_MINUS || p->lex.tok.type == YPATH_TOK_BANG || p->lex.tok.type == YPATH_TOK_LPAREN) {
                 if (s.op_count >= YPATH_EXPR_STACK_CAP) {
                     ypath_parse_err(p, "expression too complex");
                     return NULL;
                 }
-                ypath_op_t op = (p->lex.tok.type == YPATH_TOK_MINUS) ? YPATH_OP_NEG : YPATH_OP_NOT;
-                s.ops[s.op_count++] = (ypath_op_entry_t) { op, YPATH_UNARY_PREC, true };
+                if (p->lex.tok.type == YPATH_TOK_LPAREN) {
+                    s.ops[s.op_count++] = (ypath_op_entry_t) { 0, -1, false, true };
+                    paren_depth++;
+                } else {
+                    ypath_op_t op = (p->lex.tok.type == YPATH_TOK_MINUS) ? YPATH_OP_NEG : YPATH_OP_NOT;
+                    s.ops[s.op_count++] = (ypath_op_entry_t) { op, YPATH_UNARY_PREC, true, false };
+                }
                 ypath_lex_next(&p->lex);
             }
 
@@ -873,11 +872,26 @@ static ypath_expr_t* ypath_parse_expr(ypath_parser_t* p)
                     return NULL;
             expect_operand = false;
         } else {
+            if (p->lex.tok.type == YPATH_TOK_RPAREN && paren_depth > 0) {
+                while (s.op_count > 0 && !s.ops[s.op_count - 1].paren)
+                    if (!ypath_expr_stack_reduce(p, &s))
+                        return NULL;
+                if (s.op_count > 0 && s.ops[s.op_count - 1].paren) {
+                    s.op_count--;
+                    paren_depth--;
+                }
+                while (s.op_count > 0 && s.ops[s.op_count - 1].unary)
+                    if (!ypath_expr_stack_reduce(p, &s))
+                        return NULL;
+                ypath_lex_next(&p->lex);
+                continue;
+            }
+
             int prec = ypath_op_prec(p->lex.tok.type);
             if (prec == 0)
                 break;
 
-            while (s.op_count > 0 && !s.ops[s.op_count - 1].unary && s.ops[s.op_count - 1].prec >= prec)
+            while (s.op_count > 0 && !s.ops[s.op_count - 1].paren && !s.ops[s.op_count - 1].unary && s.ops[s.op_count - 1].prec >= prec)
                 if (!ypath_expr_stack_reduce(p, &s))
                     return NULL;
 
@@ -885,10 +899,15 @@ static ypath_expr_t* ypath_parse_expr(ypath_parser_t* p)
                 ypath_parse_err(p, "expression too complex");
                 return NULL;
             }
-            s.ops[s.op_count++] = (ypath_op_entry_t) { ypath_tok_to_op(p->lex.tok.type), prec, false };
+            s.ops[s.op_count++] = (ypath_op_entry_t) { ypath_tok_to_op(p->lex.tok.type), prec, false, false };
             ypath_lex_next(&p->lex);
             expect_operand = true;
         }
+    }
+
+    if (paren_depth > 0) {
+        ypath_parse_err(p, "unclosed parenthesis");
+        return NULL;
     }
 
     while (s.op_count > 0)
