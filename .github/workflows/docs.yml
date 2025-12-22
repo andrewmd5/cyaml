@@ -11,7 +11,7 @@ on:
         required: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -28,29 +28,30 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Fetch existing docs from site branch
+        run: |
+          if git fetch origin site 2>/dev/null; then
+            git worktree add site-branch origin/site
+            cp -r site-branch/* docs/ 2>/dev/null || true
+            git worktree remove site-branch
+          fi
+
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
-
-      - name: Restore docs cache
-        uses: actions/cache/restore@v4
-        with:
-          path: docs/*.json
-          key: docs-json-${{ github.run_id }}
-          restore-keys: |
-            docs-json-
 
       - name: Generate documentation
         run: uv run --with markdown python3 tools/gendocs.py "${{ steps.version.outputs.version }}"
 
-      - name: Save docs cache
-        uses: actions/cache/save@v4
-        with:
-          path: docs/*.json
-          key: docs-json-${{ github.run_id }}
-
-      - name: Upload docs artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: documentation
-          path: docs/
-          retention-days: 90
+      - name: Push to site branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          tmp=$(mktemp -d)
+          cp -r docs/* "$tmp"
+          git fetch origin site:site 2>/dev/null || git switch --orphan site
+          git switch site 2>/dev/null || git switch --orphan site
+          rm -rf *
+          cp -r "$tmp"/* .
+          git add -A
+          git commit -m "docs: ${{ steps.version.outputs.version }}" || true
+          git push origin site
