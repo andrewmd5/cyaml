@@ -56,6 +56,13 @@ jobs:
             git restore src/cyaml.h README.md refs/ypath/spec.md 2>/dev/null || true
           done
 
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy docs --project-name=cyaml --commit-dirty=true
+
       - name: Push to site branch
         run: |
           git config user.name "github-actions[bot]"
@@ -69,10 +76,3 @@ jobs:
           git add -A
           git commit -m "docs: update"
           git push -f origin site-deploy:site
-
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy docs --project-name=cyaml --commit-dirty=true
