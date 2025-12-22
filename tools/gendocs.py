@@ -584,7 +584,9 @@ def main():
 
     readme_html = ""
     if readme_path.exists():
-        readme_html = render_markdown(readme_path.read_text())
+        readme_content = readme_path.read_text()
+        readme_content = readme_content.replace('](refs/ypath/spec.md)', '](ypath/)')
+        readme_html = render_markdown(readme_content)
 
     ypath_html = ""
     if ypath_path.exists():
