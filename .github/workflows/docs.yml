@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to generate (defaults to git tag)'
+        description: 'Version to generate (leave empty to rebuild all tags)'
         required: false
 
 permissions:
@@ -18,29 +18,46 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set version
-        id: version
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Fetch existing docs from site branch
-        run: |
-          if git fetch origin site 2>/dev/null; then
-            git worktree add site-branch origin/site
-            cp -r site-branch/* docs/ 2>/dev/null || true
-            git worktree remove site-branch
-          fi
+        with:
+          fetch-depth: 0
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
 
+      - name: Determine versions to build
+        id: versions
+        run: |
+          site_exists=false
+          if git fetch origin site 2>/dev/null; then
+            site_exists=true
+            git worktree add site-branch origin/site
+            mkdir -p docs
+            cp -r site-branch/* docs/ 2>/dev/null || true
+            git worktree remove site-branch
+          fi
+
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "tags=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tags=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          elif [ "$site_exists" = "false" ]; then
+            tags=$(git tag -l 'v*' --sort=-v:refname | tr '\n' ' ')
+            echo "tags=$tags" >> $GITHUB_OUTPUT
+            echo "Rebuilding all tags: $tags"
+          else
+            echo "No version specified and site branch exists" >&2
+            exit 1
+          fi
+
       - name: Generate documentation
-        run: uv run --with markdown python3 tools/gendocs.py "${{ steps.version.outputs.version }}"
+        run: |
+          cp tools/gendocs.py /tmp/gendocs.py
+          for tag in ${{ steps.versions.outputs.tags }}; do
+            echo "=== Generating docs for $tag ==="
+            git checkout "$tag" -- src/cyaml.h README.md refs/ypath/spec.md 2>/dev/null || true
+            uv run --with markdown python3 /tmp/gendocs.py "$tag"
+            git checkout HEAD -- src/cyaml.h README.md refs/ypath/spec.md 2>/dev/null || true
+          done
 
       - name: Push to site branch
         run: |
@@ -48,10 +65,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           tmp=$(mktemp -d)
           cp -r docs/* "$tmp"
-          git fetch origin site:site 2>/dev/null || git switch --orphan site
-          git switch site 2>/dev/null || git switch --orphan site
+          git switch --orphan site-deploy
           rm -rf *
           cp -r "$tmp"/* .
           git add -A
-          git commit -m "docs: ${{ steps.version.outputs.version }}" || true
-          git push origin site
+          git commit -m "docs: update"
+          git push -f origin site-deploy:site
