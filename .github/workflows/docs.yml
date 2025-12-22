@@ -52,12 +52,13 @@ jobs:
       - name: Generate documentation
         run: |
           mkdir -p docs
-          cp tools/gendocs.py /tmp/gendocs.py
           for tag in ${{ steps.versions.outputs.tags }}; do
             echo "=== Generating docs for $tag ==="
             git checkout "$tag" -- src/cyaml.h README.md refs/ypath/spec.md 2>/dev/null || true
-            uv run --with markdown python3 /tmp/gendocs.py "$tag"
-            git checkout HEAD -- src/cyaml.h README.md refs/ypath/spec.md 2>/dev/null || true
+            git stash push -m "gendocs" -- tools/gendocs.py 2>/dev/null || true
+            git checkout HEAD -- tools/gendocs.py
+            uv run --with markdown python3 tools/gendocs.py "$tag"
+            git checkout "$tag" -- src/cyaml.h README.md refs/ypath/spec.md 2>/dev/null || true
           done
 
       - name: Push to site branch
