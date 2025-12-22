@@ -65,6 +65,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           tmp=$(mktemp -d)
           cp -r docs/* "$tmp"
+          git reset --hard HEAD
           git switch --orphan site-deploy
           rm -rf *
           cp -r "$tmp"/* .
