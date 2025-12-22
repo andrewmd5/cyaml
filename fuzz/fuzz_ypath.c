@@ -1,8 +1,5 @@
-// AFL fuzzing harness for YPATH queries
 #include "cyaml.h"
 #include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -10,7 +7,6 @@
 __AFL_FUZZ_INIT();
 #endif
 
-// Sample YAML document for path queries
 static const char *sample_yaml =
     "users:\n"
     "  - name: alice\n"
@@ -31,66 +27,81 @@ static const char *sample_yaml =
     "  - [1, 2, 3]\n"
     "  - [4, 5, 6]\n";
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+
     cyaml_error_t err;
     cyaml_doc_t *doc = cyaml_parse(sample_yaml, strlen(sample_yaml), NULL, &err);
-    if (!doc) return 1;
+    if (!doc)
+        return 1;
 
 #ifdef __AFL_FUZZ_TESTCASE_LEN
     __AFL_INIT();
     unsigned char *buf = __AFL_FUZZ_TESTCASE_BUF;
+    char *path = NULL;
 
     while (__AFL_LOOP(10000)) {
         size_t len = __AFL_FUZZ_TESTCASE_LEN;
-#else
-    unsigned char *buf = NULL;
-    size_t len = 0;
+        if (len == 0 || len > 4096)
+            continue;
 
-    if (argc > 1) {
-        FILE *f = fopen(argv[1], "rb");
-        if (!f) { cyaml_free(doc); return 1; }
-        fseek(f, 0, SEEK_END);
-        len = (size_t)ftell(f);
-        fseek(f, 0, SEEK_SET);
-        buf = malloc(len + 1);
-        if (!buf) { fclose(f); cyaml_free(doc); return 1; }
-        fread(buf, 1, len, f);
-        buf[len] = 0;
-        fclose(f);
-    } else {
-        cyaml_free(doc);
-        return 1;
-    }
-    do {
-#endif
-        if (len == 0 || len > 4096) break;
-
-        char *path = malloc(len + 1);
-        if (!path) break;
+        path = realloc(path, len + 1);
+        if (!path)
+            continue;
         memcpy(path, buf, len);
         path[len] = '\0';
 
-        cyaml_node_t *node = cyaml_path(doc, path);
-        (void)node;
-
-        node = cyaml_path_first(doc, cyaml_root(doc), path);
-        (void)node;
+        cyaml_path(doc, path);
+        cyaml_path_first(doc, cyaml_root(doc), path);
 
         cyaml_path_result_t result = cyaml_path_query(doc, NULL, path);
-        if (result.count > 0) {
-            for (uint32_t i = 0; i < result.count; i++) {
-                cyaml_node_t *n = cyaml_path_get(&result, i);
-                (void)n;
+        for (uint32_t i = 0; i < result.count; i++)
+            cyaml_path_get(&result, i);
+        cyaml_path_result_free(&result);
+    }
+    free(path);
+#else
+    char *path = NULL;
+    size_t len = 0;
+    size_t cap = 0;
+    char tmp[4096];
+    ssize_t n;
+
+    while ((n = read(STDIN_FILENO, tmp, sizeof(tmp))) > 0) {
+        if (len + (size_t)n > cap) {
+            cap = cap ? cap * 2 : 4096;
+            if (cap < len + (size_t)n)
+                cap = len + (size_t)n;
+            path = realloc(path, cap);
+            if (!path) {
+                cyaml_free(doc);
+                return 1;
             }
         }
-        cyaml_path_result_free(&result);
-
-        free(path);
-#ifdef __AFL_FUZZ_TESTCASE_LEN
+        memcpy(path + len, tmp, (size_t)n);
+        len += (size_t)n;
     }
-#else
-    } while (0);
-    free(buf);
+
+    if (len == 0 || len > 4096) {
+        free(path);
+        cyaml_free(doc);
+        return 0;
+    }
+
+    path = realloc(path, len + 1);
+    path[len] = '\0';
+
+    cyaml_path(doc, path);
+    cyaml_path_first(doc, cyaml_root(doc), path);
+
+    cyaml_path_result_t result = cyaml_path_query(doc, NULL, path);
+    for (uint32_t i = 0; i < result.count; i++)
+        cyaml_path_get(&result, i);
+    cyaml_path_result_free(&result);
+
+    free(path);
 #endif
     cyaml_free(doc);
     return 0;
