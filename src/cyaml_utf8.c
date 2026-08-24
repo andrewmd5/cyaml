@@ -1064,7 +1064,7 @@ static _locale_t cyaml_c_locale(void)
         loc = _create_locale(LC_ALL, "C");
     return loc;
 }
-#elif defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+#elif defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__)
 #define CYAML_HAS_STRTOD_L 1
 static locale_t cyaml_c_locale(void)
 {
