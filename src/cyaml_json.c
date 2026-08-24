@@ -540,6 +540,10 @@ static bool json_node(json_emitter_t* e, const cyaml_node_t* root, int start_dep
             break;
 
         case JFRAME_SEQ_ITEM:
+            if (f->child_idx > 0 && f->child_idx < n->seq.count) {
+                JFAIL(json_char(e, ','));
+                JFAIL(json_newline(e));
+            }
             if (f->child_idx >= n->seq.count) {
                 f->state = JFRAME_SEQ_CLOSE;
             } else {
@@ -550,8 +554,6 @@ static bool json_node(json_emitter_t* e, const cyaml_node_t* root, int start_dep
             break;
 
         case JFRAME_SEQ_CLOSE:
-            if (f->child_idx > 0 && f->child_idx < n->seq.count)
-                JFAIL(json_char(e, ','));
             JFAIL(json_newline(e));
             JFAIL(json_indent(e, f->depth));
             JFAIL(json_char(e, ']'));
