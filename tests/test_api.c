@@ -2080,7 +2080,7 @@ void test_cyaml_scanf_basic(void)
     unsigned int port = 0;
     bool ssl = false;
 
-    int count = cyaml_scanf(doc, "/server/host %255s /server/port %u /server/ssl %b", host, &port, &ssl);
+    int count = cyaml_scanf(doc, "/server/host %256s /server/port %u /server/ssl %b", host, &port, &ssl);
     TEST_ASSERT_EQUAL_INT(3, count);
     TEST_ASSERT_EQUAL_STRING("localhost", host);
     TEST_ASSERT_EQUAL_UINT(8080, port);
@@ -2154,7 +2154,7 @@ void test_cyaml_node_scanf_relative(void)
 
     char name[64] = { 0 };
     int age = 0;
-    int count = cyaml_node_scanf(doc, user, "name %63s age %d", name, &age);
+    int count = cyaml_node_scanf(doc, user, "name %64s age %d", name, &age);
     TEST_ASSERT_EQUAL_INT(2, count);
     TEST_ASSERT_EQUAL_STRING("alice", name);
     TEST_ASSERT_EQUAL_INT(30, age);

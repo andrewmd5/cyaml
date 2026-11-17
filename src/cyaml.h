@@ -883,9 +883,12 @@ static inline cyaml_span_t cyaml_comment_at(const cyaml_doc_t* doc, uint32_t i)
 //! - `%llu` - unsigned long long (uint64_t)
 //! - `%f` - float
 //! - `%lf` - double
-//! - `%Ns` - string (N = buffer size, e.g. `%255s`)
+//! - `%Ns` - string (N = buffer size in bytes, including the terminating null byte)
 //! - `%b` - bool
 //! - `%n` - cyaml_node_t**
+//!
+//! `%Ns` copies at most N - 1 bytes of content and appends a terminating null byte.
+//! Unlike standard scanf, N includes space for the terminating null byte.
 //!
 //! @param doc     Document to query
 //! @param format  Path+format string (space-separated)
@@ -896,7 +899,7 @@ static inline cyaml_span_t cyaml_comment_at(const cyaml_doc_t* doc, uint32_t i)
 //! ```c
 //! unsigned int port;
 //! char host[256];
-//! cyaml_scanf(doc, "/server/port %u /server/host %255s", &port, host);
+//! cyaml_scanf(doc, "/server/port %u /server/host %256s", &port, host);
 //! ```
 CYAML_API int cyaml_scanf(const cyaml_doc_t* doc, const char* format, ...);
 

@@ -111,8 +111,12 @@ Extract values directly with path-based scanf:
 ```c
 unsigned int port;
 char host[256];
-cyaml_scanf(doc, "/server/port %u /server/host %255s", &port, host);
+cyaml_scanf(doc, "/server/port %u /server/host %256s", &port, host);
 ```
+
+For `%Ns`, `N` is the total destination buffer size in bytes, including the
+terminating null byte. At most `N - 1` bytes of content are copied. This differs
+from standard `scanf`, where the width excludes the terminating null byte.
 
 Build nodes with printf syntax:
 
