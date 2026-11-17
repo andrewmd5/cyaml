@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cyaml - YAML 1.2 Parser for C</title>
+  <meta name="description" content="A portable, fully compliant YAML 1.2 parser, emitter, and document manipulation library written in C11.">
+  <link rel="canonical" href="https://cyaml.org/v0.1.2/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="cyaml - YAML 1.2 Parser for C">
+  <meta property="og:description" content="A portable, fully compliant YAML 1.2 parser, emitter, and document manipulation library written in C11.">
+  <meta property="og:url" content="https://cyaml.org/v0.1.2/">
+  <meta property="og:site_name" content="cyaml">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="cyaml - YAML 1.2 Parser for C">
+  <meta name="twitter:description" content="A portable, fully compliant YAML 1.2 parser, emitter, and document manipulation library written in C11.">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "cyaml",
+    "description": "A portable, fully compliant YAML 1.2 parser, emitter, and document manipulation library written in C11.",
+    "url": "https://cyaml.org",
+    "codeRepository": "https://github.com/andrewmd5/cyaml",
+    "programmingLanguage": "C",
+    "license": "https://opensource.org/licenses/MIT"
+  }
+  </script>
+
+  <link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a class="navbar-brand" href="../">cyaml</a>
+    <div class="nav-tabs">
+      <a class="nav-tab active" href="">Home</a>
+      <a class="nav-tab" href="api/">API Reference</a>
+      <a class="nav-tab" href="ypath/">YPATH Spec</a>
+    </div>
+    <div class="navbar-spacer"></div>
+    <select class="version-select" id="version-select" onchange="(function(sel){var p=location.pathname.match(/v[0-9.]+\/(.*)$/);window.location.href='../'+sel.value+'/'+(p?p[1]:'')})(this)"><option value="v0.1.3">v0.1.3</option><option value="v0.1.2" selected>v0.1.2</option><option value="v0.1.1">v0.1.1</option><option value="v0.1.0">v0.1.0</option></select>
+    <button class="search-trigger" id="search-trigger" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <path d="m21 21-4.35-4.35"></path>
+      </svg>
+      <span>Search...</span>
+      <kbd>⌘K</kbd>
+    </button>
+    <a class="github-link" href="https://github.com/andrewmd5/cyaml" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+      </svg>
+    </a>
+  </nav>
+
+  <aside class="sidebar hidden" id="sidebar"></aside>
+
+  <main class="main no-sidebar" id="main">
+    <div class="markdown"><h1 id="cyaml">cyaml</h1>
+<p>A portable, fully compliant YAML 1.2 parser, emitter, and document manipulation library written in C11.</p>
+<p><strong><a href="https://cyaml.org">Documentation</a></strong> | <strong><a href="https://cyaml.org/api/">API Reference</a></strong> | <strong><a href="https://cyaml.org/ypath/">YPATH Spec</a></strong></p>
+<h2 id="rationale">Rationale</h2>
+<p>The state of YAML parsing in C is not ideal. libyaml, the reference implementation used as a foundation for bindings in many languages, does not fully pass the official YAML test suite and has curious arbitrary limitations such as a 1024-character restriction on implicit keys. On the opposite end, libraries like libfyaml achieve better conformance but carry significant portability constraints, limiting the platforms they can target without substantial porting effort.</p>
+<p>cyaml was written to support <a href="https://github.com/andrewmd5/dawn">Dawn</a>, which needs to parse YAML frontmatter and must remain portable to any platform. This library provides that portability while maintaining strict conformance to the YAML 1.2 specification.</p>
+<h2 id="features">Features</h2>
+<ul>
+<li>Full YAML 1.2 specification compliance</li>
+<li>Passes the complete <a href="https://github.com/yaml/yaml-test-suite">yaml-test-suite</a> for parsing, JSON conversion, canonical dump, and emission</li>
+<li>Zero-copy parsing with span-based value access</li>
+<li>Document builder API for programmatic construction</li>
+<li>Path-based queries via <a href="#ypath">YPATH</a>, a query language for YAML</li>
+<li>JSON output</li>
+<li>Canonical dump format compatible with yaml-test-suite</li>
+<li>Event stream output</li>
+<li>Anchor and alias support with cycle detection</li>
+<li>scanf/printf-style extraction and building</li>
+<li>Path-based modification (insert, delete, append)</li>
+<li>No dependencies beyond the C standard library</li>
+<li>Builds on Windows, macOS, Linux, and BSD</li>
+</ul>
+<h2 id="building">Building</h2>
+<pre><code class="language-bash">mkdir build &amp;&amp; cd build
+cmake ..
+make
+</code></pre>
+<p>Options:</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CYAML_BUILD_TESTS</code></td>
+<td>ON</td>
+<td>Build test suite and tools</td>
+</tr>
+<tr>
+<td><code>CYAML_BUILD_SHARED</code></td>
+<td>ON</td>
+<td>Build shared library</td>
+</tr>
+<tr>
+<td><code>CYAML_BUILD_STATIC</code></td>
+<td>ON</td>
+<td>Build static library</td>
+</tr>
+<tr>
+<td><code>CYAML_ENABLE_LTO</code></td>
+<td>ON</td>
+<td>Enable link-time optimization</td>
+</tr>
+</tbody>
+</table>
+<h2 id="usage">Usage</h2>
+<h3 id="parsing">Parsing</h3>
+<pre><code class="language-c">#include &quot;cyaml.h&quot;
+
+const char *yaml = &quot;name: cyaml\nversion: 1.0\n&quot;;
+cyaml_error_t err;
+cyaml_doc_t *doc = cyaml_parse(yaml, strlen(yaml), NULL, &amp;err);
+
+if (!doc) {
+    fprintf(stderr, &quot;Parse error at line %u: %s\n&quot;, err.span.start_line, err.msg);
+    return 1;
+}
+
+cyaml_node_t *root = cyaml_root(doc);
+cyaml_node_t *name = cyaml_get(doc, root, &quot;name&quot;);
+
+char *value = cyaml_scalar_str(doc, name);
+printf(&quot;name: %s\n&quot;, value);
+free(value);
+
+cyaml_free(doc);
+</code></pre>
+<h3 id="building-documents">Building Documents</h3>
+<pre><code class="language-c">cyaml_doc_t *doc = cyaml_doc_new();
+cyaml_node_t *root = cyaml_new_map(doc);
+cyaml_set_root(doc, root);
+
+cyaml_map_set(doc, root, &quot;host&quot;, cyaml_new_cstr(doc, &quot;localhost&quot;));
+cyaml_map_set(doc, root, &quot;port&quot;, cyaml_new_int(doc, 8080));
+
+cyaml_node_t *features = cyaml_new_seq(doc);
+cyaml_seq_push(features, cyaml_new_cstr(doc, &quot;parsing&quot;));
+cyaml_seq_push(features, cyaml_new_cstr(doc, &quot;emitting&quot;));
+cyaml_map_set(doc, root, &quot;features&quot;, features);
+
+char *output = cyaml_emit(doc, NULL, NULL);
+printf(&quot;%s&quot;, output);
+free(output);
+cyaml_free(doc);
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-yaml">host: localhost
+port: 8080
+features:
+  - parsing
+  - emitting
+</code></pre>
+<h3 id="scanfprintf-style">scanf/printf Style</h3>
+<p>Extract values directly with path-based scanf:</p>
+<pre><code class="language-c">unsigned int port;
+char host[256];
+cyaml_scanf(doc, &quot;/server/port %u /server/host %255s&quot;, &amp;port, host);
+</code></pre>
+<p>Build nodes with printf syntax:</p>
+<pre><code class="language-c">cyaml_node_t *server = cyaml_buildf(doc, &quot;host: %s\nport: %d&quot;, &quot;localhost&quot;, 8080);
+</code></pre>
+<h3 id="json-conversion">JSON Conversion</h3>
+<pre><code class="language-c">char *json = cyaml_json(doc, 2, NULL);  // 2-space indent
+printf(&quot;%s\n&quot;, json);
+free(json);
+</code></pre>
+<h2 id="ypath">YPATH</h2>
+<p>YPATH is a query language for traversing YAML documents, similar to JSONPath or XPath. The full specification is in <a href="ypath/">refs/ypath/spec.md</a>.</p>
+<h3 id="quick-reference">Quick Reference</h3>
+<table>
+<thead>
+<tr>
+<th>Syntax</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/</code></td>
+<td>Document root</td>
+</tr>
+<tr>
+<td><code>/foo</code></td>
+<td>Child named "foo"</td>
+</tr>
+<tr>
+<td><code>/foo/bar</code></td>
+<td>Nested child</td>
+</tr>
+<tr>
+<td><code>*</code></td>
+<td>All children</td>
+</tr>
+<tr>
+<td><code>**</code></td>
+<td>Recursive descent</td>
+</tr>
+<tr>
+<td><code>[0]</code></td>
+<td>First element</td>
+</tr>
+<tr>
+<td><code>[-1]</code></td>
+<td>Last element</td>
+</tr>
+<tr>
+<td><code>[0:3]</code></td>
+<td>Slice (first three)</td>
+</tr>
+<tr>
+<td><code>[?@.active]</code></td>
+<td>Filter (where active is truthy)</td>
+</tr>
+<tr>
+<td><code>[?@.price &lt; 20]</code></td>
+<td>Filter with comparison</td>
+</tr>
+</tbody>
+</table>
+<h3 id="examples">Examples</h3>
+<pre><code class="language-c">// Simple path
+cyaml_node_t *title = cyaml_path(doc, &quot;/store/books[0]/title&quot;);
+
+// Query with multiple results
+cyaml_path_result_t result = cyaml_path_query(doc, NULL, &quot;/users[?@.active]/name&quot;);
+for (uint32_t i = 0; i &lt; result.count; i++) {
+    cyaml_node_t *name = cyaml_path_get(&amp;result, i);
+    // ...
+}
+cyaml_path_result_free(&amp;result);
+
+// Recursive search
+cyaml_path_result_t prices = cyaml_path_query(doc, NULL, &quot;/**/price&quot;);
+</code></pre>
+<h2 id="performance">Performance</h2>
+<p>Speed is not the primary goal of cyaml, but it is by no means slow. Expect upwards of 220 MB/s when processing large documents, with minimal memory pressure.</p>
+<h2 id="testing">Testing</h2>
+<p>The test suite is self-validating: the test harness uses cyaml itself to parse the yaml-test-suite metadata. This provides a strong bootstrap guarantee.</p>
+<pre><code class="language-bash">cd build
+./cyaml_suite ../refs/yaml-test-suite/data
+</code></pre>
+<p>The suite validates:
+- <strong>Parsing</strong>: Documents parse without error for valid inputs, reject invalid inputs
+- <strong>JSON</strong>: Output matches expected JSON conversion
+- <strong>Dump</strong>: Canonical output matches expected format
+- <strong>Emit</strong>: Re-parsing emitted output produces equivalent documents</p>
+<p>Additional testing:
+- <code>./ypath_test ../refs/ypath/tests.yml</code> validates the YPATH implementation
+- <code>./test_api</code> runs API-level unit tests
+- AFL fuzzing harnesses in <code>fuzz/</code> for parser, ypath, and roundtrip testing</p>
+<h2 id="license">License</h2>
+<p>MIT</p></div>
+  </main>
+
+  <div class="search-modal" id="search-modal">
+    <div class="search-dialog">
+      <div class="search-input-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.35-4.35"></path>
+        </svg>
+        <input class="search-input" id="search-input" placeholder="Search documentation..." type="text">
+      </div>
+      <div class="search-results" id="search-results"></div>
+    </div>
+  </div>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

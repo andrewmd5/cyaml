@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cyaml v0.1.1 - API Reference</title>
+  <meta name="description" content="Complete API reference for cyaml, a YAML 1.2 parser library for C. Includes functions for parsing, emitting, and manipulating YAML documents.">
+  <link rel="canonical" href="https://cyaml.org/v0.1.1/api/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="cyaml v0.1.1 - API Reference">
+  <meta property="og:description" content="Complete API reference for cyaml, a YAML 1.2 parser library for C. Includes functions for parsing, emitting, and manipulating YAML documents.">
+  <meta property="og:url" content="https://cyaml.org/v0.1.1/api/">
+  <meta property="og:site_name" content="cyaml">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="cyaml v0.1.1 - API Reference">
+  <meta name="twitter:description" content="Complete API reference for cyaml, a YAML 1.2 parser library for C. Includes functions for parsing, emitting, and manipulating YAML documents.">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "cyaml",
+    "description": "Complete API reference for cyaml, a YAML 1.2 parser library for C. Includes functions for parsing, emitting, and manipulating YAML documents.",
+    "url": "https://cyaml.org",
+    "codeRepository": "https://github.com/andrewmd5/cyaml",
+    "programmingLanguage": "C",
+    "license": "https://opensource.org/licenses/MIT"
+  }
+  </script>
+
+  <link rel="stylesheet" href="../../assets/styles.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a class="navbar-brand" href="../../">cyaml</a>
+    <div class="nav-tabs">
+      <a class="nav-tab" href="../">Home</a>
+      <a class="nav-tab active" href="../api/">API Reference</a>
+      <a class="nav-tab" href="../ypath/">YPATH Spec</a>
+    </div>
+    <div class="navbar-spacer"></div>
+    <select class="version-select" id="version-select" onchange="(function(sel){var p=location.pathname.match(/v[0-9.]+\/(.*)$/);window.location.href='../../'+sel.value+'/'+(p?p[1]:'')})(this)"><option value="v0.1.3">v0.1.3</option><option value="v0.1.2">v0.1.2</option><option value="v0.1.1" selected>v0.1.1</option><option value="v0.1.0">v0.1.0</option></select>
+    <button class="search-trigger" id="search-trigger" >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <path d="m21 21-4.35-4.35"></path>
+      </svg>
+      <span>Search...</span>
+      <kbd>⌘K</kbd>
+    </button>
+    <a class="github-link" href="https://github.com/andrewmd5/cyaml" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+      </svg>
+    </a>
+  </nav>
+
+  <aside class="sidebar" id="sidebar"><div class="sidebar-section">
+      <div class="sidebar-section-title">Types</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_type_t">cyaml_type_t</a><a class="sidebar-item" href="#cyaml_style_t">cyaml_style_t</a><a class="sidebar-item" href="#cyaml_coll_t">cyaml_coll_t</a><a class="sidebar-item" href="#cyaml_chomp_t">cyaml_chomp_t</a><a class="sidebar-item" href="#cyaml_spec_t">cyaml_spec_t</a><a class="sidebar-item" href="#cyaml_scalar_flags_t">cyaml_scalar_flags_t</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Span (Atom)</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_span_t">cyaml_span_t</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Node</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_pair_t">cyaml_pair_t</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Document</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_pool_t">cyaml_pool_t</a><a class="sidebar-item" href="#cyaml_tag_directive_t">cyaml_tag_directive_t</a><a class="sidebar-item" href="#cyaml_doc_flags_t">cyaml_doc_flags_t</a><a class="sidebar-item" href="#cyaml_mode_t">cyaml_mode_t</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Stream</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_stream_t">cyaml_stream_t</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Error</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_error_t">cyaml_error_t</a><a class="sidebar-item" href="#cyaml_err_t">cyaml_err_t</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Parse Options</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_opts_t">cyaml_opts_t</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Emit Options</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_emit_opts_t">cyaml_emit_opts_t</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Parsing</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_parse">cyaml_parse</a><a class="sidebar-item" href="#cyaml_free">cyaml_free</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Stream Parsing</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_parse_stream">cyaml_parse_stream</a><a class="sidebar-item" href="#cyaml_stream_free">cyaml_stream_free</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Span Utilities</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_span_dup">cyaml_span_dup</a><a class="sidebar-item" href="#cyaml_scalar_str">cyaml_scalar_str</a><a class="sidebar-item" href="#cyaml_span_eq">cyaml_span_eq</a><a class="sidebar-item" href="#cyaml_span_ieq">cyaml_span_ieq</a><a class="sidebar-item" href="#cyaml_span_cmp">cyaml_span_cmp</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Scalar Value Extraction</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_as_int">cyaml_as_int</a><a class="sidebar-item" href="#cyaml_as_uint">cyaml_as_uint</a><a class="sidebar-item" href="#cyaml_as_float">cyaml_as_float</a><a class="sidebar-item" href="#cyaml_as_bool">cyaml_as_bool</a><a class="sidebar-item" href="#cyaml_is_null_val">cyaml_is_null_val</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Mapping Access</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_get">cyaml_get</a><a class="sidebar-item" href="#cyaml_has">cyaml_has</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Path Access</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_path">cyaml_path</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Building</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_doc_new">cyaml_doc_new</a><a class="sidebar-item" href="#cyaml_node_new">cyaml_node_new</a><a class="sidebar-item" href="#cyaml_new_null">cyaml_new_null</a><a class="sidebar-item" href="#cyaml_new_str">cyaml_new_str</a><a class="sidebar-item" href="#cyaml_new_cstr">cyaml_new_cstr</a><a class="sidebar-item" href="#cyaml_new_int">cyaml_new_int</a><a class="sidebar-item" href="#cyaml_new_uint">cyaml_new_uint</a><a class="sidebar-item" href="#cyaml_new_float">cyaml_new_float</a><a class="sidebar-item" href="#cyaml_new_bool">cyaml_new_bool</a><a class="sidebar-item" href="#cyaml_new_seq">cyaml_new_seq</a><a class="sidebar-item" href="#cyaml_new_map">cyaml_new_map</a><a class="sidebar-item" href="#cyaml_seq_push">cyaml_seq_push</a><a class="sidebar-item" href="#cyaml_map_set">cyaml_map_set</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Emitting</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_emit">cyaml_emit</a><a class="sidebar-item" href="#cyaml_emit_node">cyaml_emit_node</a><a class="sidebar-item" href="#cyaml_stream_emit">cyaml_stream_emit</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Dump (Canonical Output)</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_dump">cyaml_dump</a><a class="sidebar-item" href="#cyaml_stream_dump">cyaml_stream_dump</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Event Stream</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_events">cyaml_events</a><a class="sidebar-item" href="#cyaml_stream_events">cyaml_stream_events</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">JSON Output</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_json">cyaml_json</a><a class="sidebar-item" href="#cyaml_stream_json">cyaml_stream_json</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Anchor and Alias Management</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_set_anchor">cyaml_set_anchor</a><a class="sidebar-item" href="#cyaml_new_alias">cyaml_new_alias</a><a class="sidebar-item" href="#cyaml_find_anchor">cyaml_find_anchor</a><a class="sidebar-item" href="#cyaml_resolve_aliases">cyaml_resolve_aliases</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Node Copy and Merge</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_node_copy">cyaml_node_copy</a><a class="sidebar-item" href="#cyaml_map_merge">cyaml_map_merge</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Key Sorting</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_map_sort">cyaml_map_sort</a><a class="sidebar-item" href="#cyaml_map_sort_recursive">cyaml_map_sort_recursive</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Path-based Scanf/Printf API</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_scanf">cyaml_scanf</a><a class="sidebar-item" href="#cyaml_vscanf">cyaml_vscanf</a><a class="sidebar-item" href="#cyaml_node_scanf">cyaml_node_scanf</a><a class="sidebar-item" href="#cyaml_node_vscanf">cyaml_node_vscanf</a><a class="sidebar-item" href="#cyaml_buildf">cyaml_buildf</a><a class="sidebar-item" href="#cyaml_vbuildf">cyaml_vbuildf</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Path-based Modification</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_insert_at">cyaml_insert_at</a><a class="sidebar-item" href="#cyaml_insertf">cyaml_insertf</a><a class="sidebar-item" href="#cyaml_delete_at">cyaml_delete_at</a><a class="sidebar-item" href="#cyaml_append_at">cyaml_append_at</a><a class="sidebar-item" href="#cyaml_appendf">cyaml_appendf</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Node Comparison</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_node_cmp_str">cyaml_node_cmp_str</a><a class="sidebar-item" href="#cyaml_node_eq_str">cyaml_node_eq_str</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">Utility</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_strerror">cyaml_strerror</a><a class="sidebar-item" href="#cyaml_version">cyaml_version</a></div>
+    </div><div class="sidebar-section">
+      <div class="sidebar-section-title">YPATH Query API</div>
+      <div class="sidebar-items"><a class="sidebar-item" href="#cyaml_path_result_t">cyaml_path_result_t</a><a class="sidebar-item" href="#cyaml_path_query">cyaml_path_query</a><a class="sidebar-item" href="#cyaml_path_result_free">cyaml_path_result_free</a><a class="sidebar-item" href="#cyaml_path_first">cyaml_path_first</a><a class="sidebar-item" href="#cyaml_path_debug">cyaml_path_debug</a></div>
+    </div></aside>
+
+  <main class="main" id="main">
+    <section id="types"><h2>Types</h2><div class="enum" id="cyaml_type_t">
+    <h3><code>cyaml_type_t</code></h3>
+    <p>Node types</p>
+    <table class="enum-table"><tr><td><code>CYAML_NONE = 0</code></td><td><span class="doc">Invalid/uninitialized</span></td></tr><tr><td><code>CYAML_NULL</code></td><td><span class="doc">Null value (~, null)</span></td></tr><tr><td><code>CYAML_SCALAR</code></td><td><span class="doc">Scalar value</span></td></tr><tr><td><code>CYAML_SEQ</code></td><td><span class="doc">Sequence (array)</span></td></tr><tr><td><code>CYAML_MAP</code></td><td><span class="doc">Mapping (object)</span></td></tr><tr><td><code>CYAML_ALIAS</code></td><td><span class="doc">Alias (*anchor)</span></td></tr></table>
+  </div><div class="enum" id="cyaml_style_t">
+    <h3><code>cyaml_style_t</code></h3>
+    <p>Scalar styles</p>
+    <table class="enum-table"><tr><td><code>CYAML_PLAIN = 0</code></td><td><span class="doc">Plain (unquoted)</span></td></tr><tr><td><code>CYAML_SINGLE</code></td><td><span class="doc">Single-quoted</span></td></tr><tr><td><code>CYAML_DOUBLE</code></td><td><span class="doc">Double-quoted</span></td></tr><tr><td><code>CYAML_LITERAL</code></td><td><span class="doc">Literal block (|)</span></td></tr><tr><td><code>CYAML_FOLDED</code></td><td><span class="doc">Folded block (&gt;)</span></td></tr></table>
+  </div><div class="enum" id="cyaml_coll_t">
+    <h3><code>cyaml_coll_t</code></h3>
+    <p>Collection styles</p>
+    <table class="enum-table"><tr><td><code>CYAML_BLOCK = 0</code></td><td><span class="doc">Block style (indented)</span></td></tr><tr><td><code>CYAML_FLOW</code></td><td><span class="doc">Flow style ({}, [])</span></td></tr></table>
+  </div><div class="enum" id="cyaml_chomp_t">
+    <h3><code>cyaml_chomp_t</code></h3>
+    <p>Chomping for block scalars</p>
+    <table class="enum-table"><tr><td><code>CYAML_CLIP = 0</code></td><td><span class="doc">Default: single trailing newline</span></td></tr><tr><td><code>CYAML_STRIP</code></td><td><span class="doc">Strip all trailing newlines (-)</span></td></tr><tr><td><code>CYAML_KEEP</code></td><td><span class="doc">Keep all trailing newlines (+)</span></td></tr></table>
+  </div><div class="enum" id="cyaml_spec_t">
+    <h3><code>cyaml_spec_t</code></h3>
+    <p>YAML specification version</p>
+    <table class="enum-table"><tr><td><code>CYAML_SPEC_AUTO = 0</code></td><td><span class="doc">Auto-detect from %YAML directive (default: 1.2)</span></td></tr><tr><td><code>CYAML_SPEC_1_1</code></td><td><span class="doc">YAML 1.1</span></td></tr><tr><td><code>CYAML_SPEC_1_2</code></td><td><span class="doc">YAML 1.2</span></td></tr><tr><td><code>CYAML_SPEC_1_3</code></td><td><span class="doc">YAML 1.3</span></td></tr></table>
+  </div><div class="enum" id="cyaml_scalar_flags_t">
+    <h3><code>cyaml_scalar_flags_t</code></h3>
+    <p>Scalar flags (bitmask)</p>
+    <table class="enum-table"><tr><td><code>CYAML_SCALAR_NONE = 0</code></td><td></td></tr><tr><td><code>CYAML_SCALAR_EXPLICIT_EMPTY = 1 &lt;&lt; 0</code></td><td><span class="doc">Empty value that should NOT become null</span></td></tr></table>
+  </div></section><section id="span-atom-"><h2>Span (Atom)</h2><div class="struct" id="cyaml_span_t">
+    <h3><code>cyaml_span_t</code></h3>
+    <p>Span - a reference into source data with location info This is the core building block: no string copying during parse</p>
+    <table class="struct-table"><tr><td><code><span class="kw">uint32_t</span> off</code></td><td><span class="doc">Byte offset into source</span></td></tr><tr><td><code><span class="kw">uint32_t</span> len</code></td><td><span class="doc">Length in bytes</span></td></tr><tr><td><code><span class="kw">uint32_t</span> start_line</code></td><td><span class="doc">1-based start line</span></td></tr><tr><td><code><span class="kw">uint32_t</span> start_col</code></td><td><span class="doc">1-based start column</span></td></tr><tr><td><code><span class="kw">uint32_t</span> end_line</code></td><td><span class="doc">1-based end line</span></td></tr><tr><td><code><span class="kw">uint32_t</span> end_col</code></td><td><span class="doc">1-based end column</span></td></tr></table>
+  </div></section><section id="node"><h2>Node</h2><div class="struct" id="cyaml_pair_t">
+    <h3><code>cyaml_pair_t</code></h3>
+    <p>Key-value pair for mappings</p>
+    <table class="struct-table"><tr><td><code><span class="type">cyaml_node_t</span>* key</code></td><td></td></tr><tr><td><code><span class="type">cyaml_node_t</span>* val</code></td><td></td></tr></table>
+  </div></section><section id="document"><h2>Document</h2><div class="struct" id="cyaml_pool_t">
+    <h3><code>cyaml_pool_t</code></h3>
+    
+    <table class="struct-table"><tr><td><code><span class="type">cyaml_node_t</span>** chunks</code></td><td><span class="doc">Array of chunk pointers (never moved once allocated)</span></td></tr><tr><td><code><span class="kw">uint32_t</span> chunk_count</code></td><td><span class="doc">Number of allocated chunks</span></td></tr><tr><td><code><span class="kw">uint32_t</span> chunk_cap</code></td><td><span class="doc">Capacity of chunks array</span></td></tr><tr><td><code><span class="kw">uint32_t</span> count</code></td><td><span class="doc">Total nodes allocated</span></td></tr></table>
+  </div><div class="struct" id="cyaml_tag_directive_t">
+    <h3><code>cyaml_tag_directive_t</code></h3>
+    
+    <table class="struct-table"><tr><td><code><span class="type">cyaml_span_t</span> handle</code></td><td><span class="doc">Tag handle (e.g., &quot;!&quot; or &quot;!!&quot; or &quot;!yaml!&quot;)</span></td></tr><tr><td><code><span class="type">cyaml_span_t</span> prefix</code></td><td><span class="doc">Tag prefix (e.g., &quot;tag:yaml.org,2002:&quot;)</span></td></tr></table>
+  </div><div class="enum" id="cyaml_doc_flags_t">
+    <h3><code>cyaml_doc_flags_t</code></h3>
+    <p>Document flags</p>
+    <table class="enum-table"><tr><td><code>CYAML_DOC_START = 1 &lt;&lt; 0</code></td><td><span class="doc">Had explicit &#x27;---&#x27; marker</span></td></tr><tr><td><code>CYAML_DOC_END = 1 &lt;&lt; 1</code></td><td><span class="doc">Had explicit &#x27;...&#x27; marker</span></td></tr><tr><td><code>CYAML_HAS_DIRECTIVE = 1 &lt;&lt; 2</code></td><td><span class="doc">Had any directive (%YAML, %TAG, or reserved)</span></td></tr><tr><td><code>CYAML_DOC_TAB_SEP = 1 &lt;&lt; 3</code></td><td><span class="doc">Tab separator after &#x27;---&#x27; marker</span></td></tr></table>
+  </div><div class="enum" id="cyaml_mode_t">
+    <h3><code>cyaml_mode_t</code></h3>
+    <p>Document mode</p>
+    <table class="enum-table"><tr><td><code>CYAML_PARSING</code></td><td><span class="doc">Parsed document (source borrowed)</span></td></tr><tr><td><code>CYAML_BUILDING</code></td><td><span class="doc">Built document (source owned)</span></td></tr></table>
+  </div></section><section id="stream"><h2>Stream</h2><div class="struct" id="cyaml_stream_t">
+    <h3><code>cyaml_stream_t</code></h3>
+    <p>[9.2] Stream - contains one or more documents l-yaml-stream ::= l-document-prefix* l-any-document? ... Source is always borrowed - caller manages lifetime</p>
+    <table class="struct-table"><tr><td><code><span class="kw">const</span> <span class="kw">char</span>* src</code></td><td><span class="doc">Source buffer (borrowed, must outlive stream)</span></td></tr><tr><td><code><span class="kw">uint32_t</span> src_len</code></td><td><span class="doc">Source length</span></td></tr><tr><td><code><span class="type">cyaml_doc_t</span>** docs</code></td><td><span class="doc">Array of documents</span></td></tr><tr><td><code><span class="kw">uint32_t</span> count</code></td><td><span class="doc">Number of documents</span></td></tr><tr><td><code><span class="kw">uint32_t</span> cap</code></td><td><span class="doc">Capacity</span></td></tr></table>
+  </div></section><section id="error"><h2>Error</h2><div class="struct" id="cyaml_error_t">
+    <h3><code>cyaml_error_t</code></h3>
+    
+    <table class="struct-table"><tr><td><code><span class="type">cyaml_err_t</span> code</code></td><td></td></tr><tr><td><code><span class="type">cyaml_span_t</span> span</code></td><td><span class="doc">Error location</span></td></tr></table>
+  </div><div class="enum" id="cyaml_err_t">
+    <h3><code>cyaml_err_t</code></h3>
+    
+    <table class="enum-table"><tr><td><code>CYAML_OK = 0</code></td><td></td></tr><tr><td><code>CYAML_ERR_NOMEM</code></td><td></td></tr><tr><td><code>CYAML_ERR_SYNTAX</code></td><td></td></tr><tr><td><code>CYAML_ERR_EOF</code></td><td></td></tr><tr><td><code>CYAML_ERR_INDENT</code></td><td></td></tr><tr><td><code>CYAML_ERR_ESCAPE</code></td><td></td></tr><tr><td><code>CYAML_ERR_ANCHOR</code></td><td></td></tr><tr><td><code>CYAML_ERR_ALIAS</code></td><td></td></tr><tr><td><code>CYAML_ERR_TAG</code></td><td></td></tr><tr><td><code>CYAML_ERR_DUP_KEY</code></td><td></td></tr><tr><td><code>CYAML_ERR_IO</code></td><td></td></tr></table>
+  </div></section><section id="parse-options"><h2>Parse Options</h2><div class="struct" id="cyaml_opts_t">
+    <h3><code>cyaml_opts_t</code></h3>
+    
+    <table class="struct-table"><tr><td><code><span class="kw">bool</span> dup_keys</code></td><td><span class="doc">Allow duplicate keys (default: false)</span></td></tr><tr><td><code><span class="kw">bool</span> preserve_comments</code></td><td><span class="doc">Preserve comments (default: false)</span></td></tr><tr><td><code><span class="kw">uint32_t</span> max_depth</code></td><td><span class="doc">Max nesting depth (0 = unlimited)</span></td></tr><tr><td><code><span class="kw">uint32_t</span> max_size</code></td><td><span class="doc">Max source size (0 = unlimited)</span></td></tr><tr><td><code><span class="type">cyaml_spec_t</span> spec</code></td><td><span class="doc">YAML spec version (default: auto-detect)</span></td></tr></table>
+  </div></section><section id="emit-options"><h2>Emit Options</h2><div class="struct" id="cyaml_emit_opts_t">
+    <h3><code>cyaml_emit_opts_t</code></h3>
+    
+    <table class="struct-table"><tr><td><code><span class="kw">uint8_t</span> indent</code></td><td><span class="doc">Indentation (default: 2)</span></td></tr><tr><td><code><span class="kw">uint8_t</span> width</code></td><td><span class="doc">Line width, 0 = no wrap (default: 80)</span></td></tr><tr><td><code><span class="kw">bool</span> doc_start</code></td><td><span class="doc">Emit --- (default: false)</span></td></tr><tr><td><code><span class="kw">bool</span> doc_end</code></td><td><span class="doc">Emit ... (default: false)</span></td></tr><tr><td><code><span class="kw">bool</span> preserve_comments</code></td><td><span class="doc">Emit comments if available (default: false)</span></td></tr><tr><td><code><span class="kw">bool</span> preserve_style</code></td><td><span class="doc">Preserve original node styles (default: false = convert flow to block)</span></td></tr><tr><td><code><span class="type">cyaml_style_t</span> style</code></td><td><span class="doc">Default scalar style</span></td></tr><tr><td><code><span class="type">cyaml_coll_t</span> coll</code></td><td><span class="doc">Default collection style</span></td></tr></table>
+  </div></section><section id="parsing"><h2>Parsing</h2><div class="function" id="cyaml_parse">
+    <h3><code><span class="type">cyaml_doc_t</span> * <span class="fn">cyaml_parse</span>(<span class="kw">const</span> <span class="kw">char</span>* <span class="param">src</span>, <span class="kw">size_t</span> <span class="param">len</span>, <span class="kw">const</span> <span class="type">cyaml_opts_t</span>* <span class="param">opts</span>, <span class="type">cyaml_error_t</span>* <span class="param">err</span>)</code></h3>
+    <p class="summary">Parse first document from YAML string</p><div class="params"><h4>Parameters</h4><dl><dt><code>src</code></dt><dd>Source buffer (must outlive returned doc)</dd><dt><code>len</code></dt><dd>Source length</dd><dt><code>opts</code></dt><dd>Parse options (NULL for defaults)</dd><dt><code>err</code></dt><dd>Error output (NULL to ignore)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Document or NULL on error</p></div>
+  </div><div class="function" id="cyaml_free">
+    <h3><code><span class="kw">void</span> <span class="fn">cyaml_free</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>)</code></h3>
+    <p class="summary">Free document and all nodes (does not free source buffer)</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to free (NULL safe)</dd></dl></div>
+  </div></section><section id="stream-parsing"><h2>Stream Parsing</h2><div class="function" id="cyaml_parse_stream">
+    <h3><code><span class="type">cyaml_stream_t</span> * <span class="fn">cyaml_parse_stream</span>(<span class="kw">const</span> <span class="kw">char</span>* <span class="param">src</span>, <span class="kw">size_t</span> <span class="param">len</span>, <span class="kw">const</span> <span class="type">cyaml_opts_t</span>* <span class="param">opts</span>, <span class="type">cyaml_error_t</span>* <span class="param">err</span>)</code></h3>
+    <p class="summary">Parse YAML stream containing multiple documents</p><div class="params"><h4>Parameters</h4><dl><dt><code>src</code></dt><dd>Source buffer (must outlive returned stream)</dd><dt><code>len</code></dt><dd>Source length</dd><dt><code>opts</code></dt><dd>Parse options (NULL for defaults)</dd><dt><code>err</code></dt><dd>Error output (NULL to ignore)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Stream or NULL on error</p></div>
+  </div><div class="function" id="cyaml_stream_free">
+    <h3><code><span class="kw">void</span> <span class="fn">cyaml_stream_free</span>(<span class="type">cyaml_stream_t</span>* <span class="param">stream</span>)</code></h3>
+    <p class="summary">Free stream and all documents (does not free source buffer)</p><div class="params"><h4>Parameters</h4><dl><dt><code>stream</code></dt><dd>Stream to free (NULL safe)</dd></dl></div>
+  </div></section><section id="span-utilities"><h2>Span Utilities</h2><div class="function" id="cyaml_span_dup">
+    <h3><code><span class="kw">char</span> * <span class="fn">cyaml_span_dup</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="type">cyaml_span_t</span> <span class="param">s</span>)</code></h3>
+    <p class="summary">Duplicate span as null-terminated string</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the span</dd><dt><code>s</code></dt><dd>Span to duplicate</dd></dl></div><div class="returns"><h4>Returns</h4><p>Allocated string (caller must free) or NULL</p></div>
+  </div><div class="function" id="cyaml_scalar_str">
+    <h3><code><span class="kw">char</span> * <span class="fn">cyaml_scalar_str</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">n</span>)</code></h3>
+    <p class="summary">Get scalar value as string with all YAML processing applied Handles escape sequences, line folding, and block scalar indent stripping.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>n</code></dt><dd>Scalar node</dd></dl></div><div class="returns"><h4>Returns</h4><p>Allocated string (caller must free) or NULL</p></div>
+  </div><div class="function" id="cyaml_span_eq">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_span_eq</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="type">cyaml_span_t</span> <span class="param">s</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">str</span>)</code></h3>
+    <p class="summary">Compare span to string (case-sensitive)</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the span</dd><dt><code>s</code></dt><dd>Span to compare</dd><dt><code>str</code></dt><dd>String to compare against</dd></dl></div><div class="returns"><h4>Returns</h4><p>true if equal</p></div>
+  </div><div class="function" id="cyaml_span_ieq">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_span_ieq</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="type">cyaml_span_t</span> <span class="param">s</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">str</span>)</code></h3>
+    <p class="summary">Compare span to string (case-insensitive)</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the span</dd><dt><code>s</code></dt><dd>Span to compare</dd><dt><code>str</code></dt><dd>String to compare against</dd></dl></div><div class="returns"><h4>Returns</h4><p>true if equal (ignoring case)</p></div>
+  </div><div class="function" id="cyaml_span_cmp">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_span_cmp</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="type">cyaml_span_t</span> <span class="param">a</span>, <span class="type">cyaml_span_t</span> <span class="param">b</span>)</code></h3>
+    <p class="summary">Compare two spans for equality</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the spans</dd><dt><code>a</code></dt><dd>First span</dd><dt><code>b</code></dt><dd>Second span</dd></dl></div><div class="returns"><h4>Returns</h4><p>true if equal</p></div>
+  </div></section><section id="scalar-value-extraction"><h2>Scalar Value Extraction</h2><div class="function" id="cyaml_as_int">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_as_int</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">n</span>, <span class="kw">int64_t</span>* <span class="param">out</span>)</code></h3>
+    <p class="summary">Parse scalar as signed integer Supports decimal, hex (0x), and octal (0o) formats.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>n</code></dt><dd>Scalar node to parse</dd><dt><code>out</code></dt><dd>Output value</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div><div class="function" id="cyaml_as_uint">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_as_uint</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">n</span>, <span class="kw">uint64_t</span>* <span class="param">out</span>)</code></h3>
+    <p class="summary">Parse scalar as unsigned integer Supports decimal, hex (0x), and octal (0o) formats.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>n</code></dt><dd>Scalar node to parse</dd><dt><code>out</code></dt><dd>Output value</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div><div class="function" id="cyaml_as_float">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_as_float</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">n</span>, <span class="kw">double</span>* <span class="param">out</span>)</code></h3>
+    <p class="summary">Parse scalar as floating point Supports .inf, -.inf, and .nan special values.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>n</code></dt><dd>Scalar node to parse</dd><dt><code>out</code></dt><dd>Output value</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div><div class="function" id="cyaml_as_bool">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_as_bool</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">n</span>, <span class="kw">bool</span>* <span class="param">out</span>)</code></h3>
+    <p class="summary">Parse scalar as boolean Recognizes true/false (case-insensitive).</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>n</code></dt><dd>Scalar node to parse</dd><dt><code>out</code></dt><dd>Output value</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div><div class="function" id="cyaml_is_null_val">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_is_null_val</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">n</span>)</code></h3>
+    <p class="summary">Check if scalar represents null Recognizes ~, null, Null, NULL, or empty value.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>n</code></dt><dd>Node to check</dd></dl></div><div class="returns"><h4>Returns</h4><p>true if null</p></div>
+  </div></section><section id="mapping-access"><h2>Mapping Access</h2><div class="function" id="cyaml_get">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_get</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">n</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">key</span>)</code></h3>
+    <p class="summary">Get mapping value by string key</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>n</code></dt><dd>Mapping node</dd><dt><code>key</code></dt><dd>Key to look up</dd></dl></div><div class="returns"><h4>Returns</h4><p>Value node or NULL if not found</p></div>
+  </div><div class="function" id="cyaml_has">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_has</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">n</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">key</span>)</code></h3>
+    <p class="summary">Check if mapping contains key</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>n</code></dt><dd>Mapping node</dd><dt><code>key</code></dt><dd>Key to check</dd></dl></div><div class="returns"><h4>Returns</h4><p>true if key exists</p></div>
+  </div></section><section id="path-access"><h2>Path Access</h2><div class="function" id="cyaml_path">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_path</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">path</span>)</code></h3>
+    <p class="summary">Navigate to node at YPATH Uses YPATH syntax: /store/books[0]/title, /users/*/name, etc. Absolute paths (starting with /) evaluate from document root.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to query</dd><dt><code>path</code></dt><dd>YPATH expression (e.g., &quot;/users[0]/name&quot;, &quot;/config/db/host&quot;)</dd></dl></div><div class="returns"><h4>Returns</h4><p>First matching node or NULL if not found</p></div>
+  </div></section><section id="building"><h2>Building</h2><div class="function" id="cyaml_doc_new">
+    <h3><code><span class="type">cyaml_doc_t</span> * <span class="fn">cyaml_doc_new</span>(void)</code></h3>
+    <p class="summary">Create empty document for building YAML programmatically</p><div class="returns"><h4>Returns</h4><p>New document or NULL on allocation failure</p></div>
+  </div><div class="function" id="cyaml_node_new">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_node_new</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="type">cyaml_type_t</span> <span class="param">type</span>)</code></h3>
+    <p class="summary">Allocate node of specified type from document pool</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate from</dd><dt><code>type</code></dt><dd>Node type</dd></dl></div><div class="returns"><h4>Returns</h4><p>New node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_new_null">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_new_null</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>)</code></h3>
+    <p class="summary">Create null node</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate from</dd></dl></div><div class="returns"><h4>Returns</h4><p>New null node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_new_str">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_new_str</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">str</span>, <span class="kw">size_t</span> <span class="param">len</span>)</code></h3>
+    <p class="summary">Create scalar node from string with explicit length</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate from</dd><dt><code>str</code></dt><dd>String data (copied)</dd><dt><code>len</code></dt><dd>String length</dd></dl></div><div class="returns"><h4>Returns</h4><p>New scalar node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_new_cstr">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_new_cstr</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">str</span>)</code></h3>
+    <p class="summary">Create scalar node from null-terminated string</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate from</dd><dt><code>str</code></dt><dd>Null-terminated string (copied)</dd></dl></div><div class="returns"><h4>Returns</h4><p>New scalar node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_new_int">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_new_int</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">int64_t</span> <span class="param">val</span>)</code></h3>
+    <p class="summary">Create scalar node from signed integer</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate from</dd><dt><code>val</code></dt><dd>Integer value</dd></dl></div><div class="returns"><h4>Returns</h4><p>New scalar node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_new_uint">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_new_uint</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">uint64_t</span> <span class="param">val</span>)</code></h3>
+    <p class="summary">Create scalar node from unsigned integer</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate from</dd><dt><code>val</code></dt><dd>Unsigned value</dd></dl></div><div class="returns"><h4>Returns</h4><p>New scalar node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_new_float">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_new_float</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">double</span> <span class="param">val</span>)</code></h3>
+    <p class="summary">Create scalar node from floating point</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate from</dd><dt><code>val</code></dt><dd>Float value</dd></dl></div><div class="returns"><h4>Returns</h4><p>New scalar node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_new_bool">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_new_bool</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">bool</span> <span class="param">val</span>)</code></h3>
+    <p class="summary">Create scalar node from boolean</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate from</dd><dt><code>val</code></dt><dd>Boolean value</dd></dl></div><div class="returns"><h4>Returns</h4><p>New scalar node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_new_seq">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_new_seq</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>)</code></h3>
+    <p class="summary">Create empty sequence node</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate from</dd></dl></div><div class="returns"><h4>Returns</h4><p>New sequence node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_new_map">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_new_map</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>)</code></h3>
+    <p class="summary">Create empty mapping node</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate from</dd></dl></div><div class="returns"><h4>Returns</h4><p>New mapping node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_seq_push">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_seq_push</span>(<span class="type">cyaml_node_t</span>* <span class="param">seq</span>, <span class="type">cyaml_node_t</span>* <span class="param">item</span>)</code></h3>
+    <p class="summary">Append item to sequence</p><div class="params"><h4>Parameters</h4><dl><dt><code>seq</code></dt><dd>Sequence node</dd><dt><code>item</code></dt><dd>Item to append</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div><div class="function" id="cyaml_map_set">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_map_set</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="type">cyaml_node_t</span>* <span class="param">map</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">key</span>, <span class="type">cyaml_node_t</span>* <span class="param">val</span>)</code></h3>
+    <p class="summary">Set or update mapping key-value pair</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the map</dd><dt><code>map</code></dt><dd>Mapping node</dd><dt><code>key</code></dt><dd>Key string (creates new scalar key)</dd><dt><code>val</code></dt><dd>Value node</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div></section><section id="emitting"><h2>Emitting</h2><div class="function" id="cyaml_emit">
+    <h3><code><span class="kw">char</span> * <span class="fn">cyaml_emit</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_emit_opts_t</span>* <span class="param">opts</span>, <span class="kw">size_t</span>* <span class="param">len</span>)</code></h3>
+    <p class="summary">Emit document to newly allocated YAML string</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to emit</dd><dt><code>opts</code></dt><dd>Emit options (NULL for defaults: 2-space indent, 80 char width)</dd><dt><code>len</code></dt><dd>Output length (NULL to ignore)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Allocated string (caller must free) or NULL on error</p></div>
+  </div><div class="function" id="cyaml_emit_node">
+    <h3><code><span class="kw">char</span> * <span class="fn">cyaml_emit_node</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">node</span>, <span class="kw">const</span> <span class="type">cyaml_emit_opts_t</span>* <span class="param">opts</span>, <span class="kw">size_t</span>* <span class="param">len</span>)</code></h3>
+    <p class="summary">Emit single node to newly allocated YAML string</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>node</code></dt><dd>Node to emit</dd><dt><code>opts</code></dt><dd>Emit options (NULL for defaults)</dd><dt><code>len</code></dt><dd>Output length (NULL to ignore)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Allocated string (caller must free) or NULL on error</p></div>
+  </div><div class="function" id="cyaml_stream_emit">
+    <h3><code><span class="kw">char</span> * <span class="fn">cyaml_stream_emit</span>(<span class="kw">const</span> <span class="type">cyaml_stream_t</span>* <span class="param">stream</span>, <span class="kw">size_t</span>* <span class="param">len</span>)</code></h3>
+    <p class="summary">Emit stream to YAML preserving original formatting</p><div class="params"><h4>Parameters</h4><dl><dt><code>stream</code></dt><dd>Stream to emit</dd><dt><code>len</code></dt><dd>Output length (NULL to ignore)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Allocated string (caller must free) or NULL on error</p></div>
+  </div></section><section id="dump-canonical-output-"><h2>Dump (Canonical Output)</h2><div class="function" id="cyaml_dump">
+    <h3><code><span class="kw">char</span> * <span class="fn">cyaml_dump</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">size_t</span>* <span class="param">len</span>)</code></h3>
+    <p class="summary">Dump document to canonical YAML format Uses yaml-test-suite out.yaml format conventions.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to dump</dd><dt><code>len</code></dt><dd>Output length (NULL to ignore)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Allocated string (caller must free) or NULL on error</p></div>
+  </div><div class="function" id="cyaml_stream_dump">
+    <h3><code><span class="kw">char</span> * <span class="fn">cyaml_stream_dump</span>(<span class="kw">const</span> <span class="type">cyaml_stream_t</span>* <span class="param">stream</span>, <span class="kw">size_t</span>* <span class="param">len</span>)</code></h3>
+    <p class="summary">Dump stream to canonical YAML format (all documents)</p><div class="params"><h4>Parameters</h4><dl><dt><code>stream</code></dt><dd>Stream to dump</dd><dt><code>len</code></dt><dd>Output length (NULL to ignore)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Allocated string (caller must free) or NULL on error</p></div>
+  </div></section><section id="event-stream"><h2>Event Stream</h2><div class="function" id="cyaml_events">
+    <h3><code><span class="kw">char</span> * <span class="fn">cyaml_events</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">bool</span> <span class="param">indent</span>, <span class="kw">size_t</span>* <span class="param">len</span>)</code></h3>
+    <p class="summary">Emit event stream for single document</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to emit events for</dd><dt><code>indent</code></dt><dd>Add visual indentation (false for yaml-test-suite format)</dd><dt><code>len</code></dt><dd>Output length (NULL to ignore)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Allocated string (caller must free) or NULL on error</p></div>
+  </div><div class="function" id="cyaml_stream_events">
+    <h3><code><span class="kw">char</span> * <span class="fn">cyaml_stream_events</span>(<span class="kw">const</span> <span class="type">cyaml_stream_t</span>* <span class="param">stream</span>, <span class="kw">bool</span> <span class="param">indent</span>, <span class="kw">size_t</span>* <span class="param">len</span>)</code></h3>
+    <p class="summary">Emit event stream for full stream (all documents)</p><div class="params"><h4>Parameters</h4><dl><dt><code>stream</code></dt><dd>Stream to emit events for</dd><dt><code>indent</code></dt><dd>Add visual indentation</dd><dt><code>len</code></dt><dd>Output length (NULL to ignore)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Allocated string (caller must free) or NULL on error</p></div>
+  </div></section><section id="json-output"><h2>JSON Output</h2><div class="function" id="cyaml_json">
+    <h3><code><span class="kw">char</span> * <span class="fn">cyaml_json</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">int</span> <span class="param">indent</span>, <span class="kw">size_t</span>* <span class="param">len</span>)</code></h3>
+    <p class="summary">Convert document to JSON</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to convert</dd><dt><code>indent</code></dt><dd>Spaces per indent level (0 = compact)</dd><dt><code>len</code></dt><dd>Output length (NULL to ignore)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Allocated string (caller must free) or NULL on error</p></div>
+  </div><div class="function" id="cyaml_stream_json">
+    <h3><code><span class="kw">char</span> * <span class="fn">cyaml_stream_json</span>(<span class="kw">const</span> <span class="type">cyaml_stream_t</span>* <span class="param">stream</span>, <span class="kw">int</span> <span class="param">indent</span>, <span class="kw">size_t</span>* <span class="param">len</span>)</code></h3>
+    <p class="summary">Convert stream to JSON Single document streams output the JSON value directly. Multi-document streams output as a JSON array.</p><div class="params"><h4>Parameters</h4><dl><dt><code>stream</code></dt><dd>Stream to convert</dd><dt><code>indent</code></dt><dd>Spaces per indent level (0 = compact)</dd><dt><code>len</code></dt><dd>Output length (NULL to ignore)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Allocated string (caller must free) or NULL on error</p></div>
+  </div></section><section id="anchor-and-alias-management"><h2>Anchor and Alias Management</h2><div class="function" id="cyaml_set_anchor">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_set_anchor</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="type">cyaml_node_t</span>* <span class="param">node</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">anchor</span>)</code></h3>
+    <p class="summary">Set anchor name on a node</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node (must be in BUILDING mode)</dd><dt><code>node</code></dt><dd>Node to anchor</dd><dt><code>anchor</code></dt><dd>Anchor name (without &amp;), NULL to clear</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div><div class="function" id="cyaml_new_alias">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_new_alias</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="type">cyaml_node_t</span>* <span class="param">target</span>)</code></h3>
+    <p class="summary">Create alias node pointing to an anchored node</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate in</dd><dt><code>target</code></dt><dd>Target node (must have anchor set)</dd></dl></div><div class="returns"><h4>Returns</h4><p>New alias node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_find_anchor">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_find_anchor</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">anchor</span>)</code></h3>
+    <p class="summary">Find node by anchor name (searches from root)</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to search</dd><dt><code>anchor</code></dt><dd>Anchor name to find</dd></dl></div><div class="returns"><h4>Returns</h4><p>Node with anchor or NULL if not found</p></div>
+  </div><div class="function" id="cyaml_resolve_aliases">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_resolve_aliases</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>)</code></h3>
+    <p class="summary">Resolve all aliases in document (replace with deep copies of targets)</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to resolve</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success, false if unresolved aliases remain</p></div>
+  </div></section><section id="node-copy-and-merge"><h2>Node Copy and Merge</h2><div class="function" id="cyaml_node_copy">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_node_copy</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">src</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">node</span>)</code></h3>
+    <p class="summary">Deep copy a node into a document Copies node and all children. Scalar content is copied into target doc.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Target document to allocate into</dd><dt><code>src</code></dt><dd>Source document containing the node</dd><dt><code>node</code></dt><dd>Source node to copy</dd></dl></div><div class="returns"><h4>Returns</h4><p>New node or NULL on failure</p></div>
+  </div><div class="function" id="cyaml_map_merge">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_map_merge</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="type">cyaml_node_t</span>* <span class="param">dst</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">src</span>)</code></h3>
+    <p class="summary">Deep merge src map into dst map For conflicting keys: scalars replaced, maps merged recursively, seqs replaced.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing both nodes</dd><dt><code>dst</code></dt><dd>Destination map (modified in place)</dd><dt><code>src</code></dt><dd>Source map to merge from</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div></section><section id="key-sorting"><h2>Key Sorting</h2><div class="function" id="cyaml_map_sort">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_map_sort</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="type">cyaml_node_t</span>* <span class="param">map</span>, <span class="type">cyaml_key_cmp_t</span> <span class="param">cmp</span>)</code></h3>
+    <p class="summary">Sort mapping keys</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the map</dd><dt><code>map</code></dt><dd>Mapping node to sort</dd><dt><code>cmp</code></dt><dd>Comparison function (NULL for default alphabetical)</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div><div class="function" id="cyaml_map_sort_recursive">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_map_sort_recursive</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="type">cyaml_node_t</span>* <span class="param">node</span>, <span class="type">cyaml_key_cmp_t</span> <span class="param">cmp</span>)</code></h3>
+    <p class="summary">Sort mapping keys recursively (all nested maps)</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>node</code></dt><dd>Starting node (will recurse into children)</dd><dt><code>cmp</code></dt><dd>Comparison function (NULL for default alphabetical)</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div></section><section id="path-based-scanf-printf-api"><h2>Path-based Scanf/Printf API</h2><div class="function" id="cyaml_scanf">
+    <h3><code><span class="kw">int</span> <span class="fn">cyaml_scanf</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">format</span>, <span class="param">...</span>)</code></h3>
+    <p class="summary">Extract values using path-based scanf</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to query</dd><dt><code>format</code></dt><dd>Path+format string (space-separated)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Number of successfully extracted values, -1 on format error</p></div><div class="examples"><h4>Examples</h4><div class="example-card">
+        <pre><code>unsigned int port;
+char host[256];
+cyaml_scanf(doc, &quot;/server/port %u /server/host %255s&quot;, &amp;port, host);</code></pre>
+        <button class="copy-btn" aria-label="Copy code"></button>
+      </div></div>
+  </div><div class="function" id="cyaml_vscanf">
+    <h3><code><span class="kw">int</span> <span class="fn">cyaml_vscanf</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">format</span>, va_list <span class="param">ap</span>)</code></h3>
+    <p class="summary">Extract values using path-based scanf (va_list version)</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to query</dd><dt><code>format</code></dt><dd>Path+format string (space-separated)</dd><dt><code>ap</code></dt><dd>Variable argument list</dd></dl></div><div class="returns"><h4>Returns</h4><p>Number of successfully extracted values, -1 on format error</p></div>
+  </div><div class="function" id="cyaml_node_scanf">
+    <h3><code><span class="kw">int</span> <span class="fn">cyaml_node_scanf</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">node</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">format</span>, <span class="param">...</span>)</code></h3>
+    <p class="summary">Extract values starting from a specific node Relative paths start from node, absolute paths (/) still use root.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>node</code></dt><dd>Starting node for relative paths (NULL = root)</dd><dt><code>format</code></dt><dd>Path+format string</dd></dl></div><div class="returns"><h4>Returns</h4><p>Number of successfully extracted values</p></div>
+  </div><div class="function" id="cyaml_node_vscanf">
+    <h3><code><span class="kw">int</span> <span class="fn">cyaml_node_vscanf</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">node</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">format</span>, va_list <span class="param">ap</span>)</code></h3>
+    <p class="summary">Extract values starting from a specific node (va_list version)</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing the node</dd><dt><code>node</code></dt><dd>Starting node for relative paths (NULL = root)</dd><dt><code>format</code></dt><dd>Path+format string</dd><dt><code>ap</code></dt><dd>Variable argument list</dd></dl></div><div class="returns"><h4>Returns</h4><p>Number of successfully extracted values</p></div>
+  </div><div class="function" id="cyaml_buildf">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_buildf</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">format</span>, <span class="param">...</span>)</code></h3>
+    <p class="summary">Build node from printf-style format string Creates nodes by substituting values into a YAML template. Formats: %d, %u, %ld, %lu, %lld, %llu, %f, %lf, %s, %b</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate in</dd><dt><code>format</code></dt><dd>YAML with format specifiers</dd></dl></div><div class="returns"><h4>Returns</h4><p>New node or NULL on error</p></div><div class="examples"><h4>Examples</h4><div class="example-card">
+        <pre><code>cyaml_buildf(doc, &quot;port: %d&quot;, 8080)         // -&gt; {port: 8080}</code></pre>
+        <button class="copy-btn" aria-label="Copy code"></button>
+      </div><div class="example-card">
+        <pre><code>cyaml_buildf(doc, &quot;- %s\n- %s&quot;, &quot;a&quot;, &quot;b&quot;)   // -&gt; [a, b]</code></pre>
+        <button class="copy-btn" aria-label="Copy code"></button>
+      </div><div class="example-card">
+        <pre><code>cyaml_buildf(doc, &quot;%s&quot;, &quot;hello&quot;)            // -&gt; &quot;hello&quot;</code></pre>
+        <button class="copy-btn" aria-label="Copy code"></button>
+      </div></div>
+  </div><div class="function" id="cyaml_vbuildf">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_vbuildf</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">format</span>, va_list <span class="param">ap</span>)</code></h3>
+    <p class="summary">Build node from printf-style format string (va_list version)</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to allocate in</dd><dt><code>format</code></dt><dd>YAML with format specifiers</dd><dt><code>ap</code></dt><dd>Variable argument list</dd></dl></div><div class="returns"><h4>Returns</h4><p>New node or NULL on error</p></div>
+  </div></section><section id="path-based-modification"><h2>Path-based Modification</h2><div class="function" id="cyaml_insert_at">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_insert_at</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">path</span>, <span class="type">cyaml_node_t</span>* <span class="param">val</span>)</code></h3>
+    <p class="summary">Insert or update node at path Creates intermediate maps as needed. For existing keys, replaces value. Path must resolve to a valid insertion point.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to modify (must be CYAML_BUILDING mode or parsed)</dd><dt><code>path</code></dt><dd>Target path (e.g., &quot;/server/port&quot;, &quot;/users/0/name&quot;)</dd><dt><code>val</code></dt><dd>Value node to insert (must be from same doc)</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div><div class="examples"><h4>Examples</h4><div class="example-card">
+        <pre><code>cyaml_insert_at(doc, &quot;/server/timeout&quot;, cyaml_new_int(doc, 30));</code></pre>
+        <button class="copy-btn" aria-label="Copy code"></button>
+      </div></div>
+  </div><div class="function" id="cyaml_insertf">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_insertf</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">path</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">format</span>, <span class="param">...</span>)</code></h3>
+    <p class="summary">Insert printf-built node at path (convenience) Equivalent to: cyaml_insert_at(doc, path, cyaml_buildf(doc, format, ...))</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to modify</dd><dt><code>path</code></dt><dd>Target path</dd><dt><code>format</code></dt><dd>YAML format string</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div><div class="examples"><h4>Examples</h4><div class="example-card">
+        <pre><code>cyaml_insertf(doc, &quot;/server&quot;, &quot;timeout: %d&quot;, 30);</code></pre>
+        <button class="copy-btn" aria-label="Copy code"></button>
+      </div></div>
+  </div><div class="function" id="cyaml_delete_at">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_delete_at</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">path</span>)</code></h3>
+    <p class="summary">Delete node at path Removes the node from its parent container.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to modify</dd><dt><code>path</code></dt><dd>Path to node to delete</dd></dl></div><div class="returns"><h4>Returns</h4><p>true if deleted, false if not found</p></div>
+  </div><div class="function" id="cyaml_append_at">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_append_at</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">path</span>, <span class="type">cyaml_node_t</span>* <span class="param">val</span>)</code></h3>
+    <p class="summary">Append to sequence at path Path must resolve to a sequence node.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to modify</dd><dt><code>path</code></dt><dd>Path to sequence</dd><dt><code>val</code></dt><dd>Value to append</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div><div class="function" id="cyaml_appendf">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_appendf</span>(<span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">path</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">format</span>, <span class="param">...</span>)</code></h3>
+    <p class="summary">Append printf-built node to sequence at path Path must resolve to a sequence node.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to modify</dd><dt><code>path</code></dt><dd>Path to sequence</dd><dt><code>format</code></dt><dd>YAML format string for new item</dd></dl></div><div class="returns"><h4>Returns</h4><p>true on success</p></div>
+  </div></section><section id="node-comparison"><h2>Node Comparison</h2><div class="function" id="cyaml_node_cmp_str">
+    <h3><code><span class="kw">int</span> <span class="fn">cyaml_node_cmp_str</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">node</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">str</span>, <span class="kw">size_t</span> <span class="param">len</span>)</code></h3>
+    <p class="summary">Compare scalar node value to string (like strcmp)</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing node</dd><dt><code>node</code></dt><dd>Node to compare (must be scalar)</dd><dt><code>str</code></dt><dd>String to compare against</dd><dt><code>len</code></dt><dd>String length (0 = use strlen)</dd></dl></div><div class="returns"><h4>Returns</h4><p>0 if equal, &lt;0 if node &lt; str, &gt;0 if node &gt; str</p></div>
+  </div><div class="function" id="cyaml_node_eq_str">
+    <h3><code><span class="kw">bool</span> <span class="fn">cyaml_node_eq_str</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">node</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">str</span>)</code></h3>
+    <p class="summary">Check if scalar node equals string</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document containing node</dd><dt><code>node</code></dt><dd>Node to compare</dd><dt><code>str</code></dt><dd>String to compare (null-terminated)</dd></dl></div><div class="returns"><h4>Returns</h4><p>true if node value equals str</p></div>
+  </div></section><section id="utility"><h2>Utility</h2><div class="function" id="cyaml_strerror">
+    <h3><code><span class="kw">const</span> <span class="kw">char</span> * <span class="fn">cyaml_strerror</span>(<span class="type">cyaml_err_t</span> <span class="param">err</span>)</code></h3>
+    <p class="summary">Get human-readable error message</p><div class="params"><h4>Parameters</h4><dl><dt><code>err</code></dt><dd>Error code</dd></dl></div><div class="returns"><h4>Returns</h4><p>Static error string</p></div>
+  </div><div class="function" id="cyaml_version">
+    <h3><code><span class="kw">const</span> <span class="kw">char</span> * <span class="fn">cyaml_version</span>(void)</code></h3>
+    <p class="summary">Get library version string</p><div class="returns"><h4>Returns</h4><p>Static version string (e.g., &quot;0.1.0&quot;)</p></div>
+  </div></section><section id="ypath-query-api"><h2>YPATH Query API</h2><div class="struct" id="cyaml_path_result_t">
+    <h3><code>cyaml_path_result_t</code></h3>
+    <p>Query result containing matched nodes or error info</p>
+    <table class="struct-table"><tr><td><code><span class="type">cyaml_node_t</span>** nodes</code></td><td><span class="doc">Array of pointers to matched nodes (owned by doc)</span></td></tr><tr><td><code><span class="kw">uint32_t</span> count</code></td><td><span class="doc">Number of matched nodes</span></td></tr><tr><td><code><span class="kw">const</span> <span class="kw">char</span>* error</code></td><td><span class="doc">Error message (NULL on success)</span></td></tr><tr><td><code><span class="kw">uint32_t</span> error_pos</code></td><td><span class="doc">Position in path where error occurred</span></td></tr></table>
+  </div><div class="function" id="cyaml_path_query">
+    <h3><code><span class="type">cyaml_path_result_t</span> <span class="fn">cyaml_path_query</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">context</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">path</span>)</code></h3>
+    <p class="summary">Execute a YPATH query and return all matching nodes Nodes returned are pointers into the document - no data is copied.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to query</dd><dt><code>context</code></dt><dd>Context node for relative paths (NULL = use root)</dd><dt><code>path</code></dt><dd>YPATH expression (e.g., &quot;/users[0]/name&quot;, &quot;/items[?@.active]&quot;)</dd></dl></div><div class="returns"><h4>Returns</h4><p>Result with matched nodes or error info</p></div>
+  </div><div class="function" id="cyaml_path_result_free">
+    <h3><code><span class="kw">void</span> <span class="fn">cyaml_path_result_free</span>(<span class="type">cyaml_path_result_t</span>* <span class="param">result</span>)</code></h3>
+    <p class="summary">Free query result</p><div class="params"><h4>Parameters</h4><dl><dt><code>result</code></dt><dd>Result to free (NULL safe)</dd></dl></div>
+  </div><div class="function" id="cyaml_path_first">
+    <h3><code><span class="type">cyaml_node_t</span> * <span class="fn">cyaml_path_first</span>(<span class="kw">const</span> <span class="type">cyaml_doc_t</span>* <span class="param">doc</span>, <span class="kw">const</span> <span class="type">cyaml_node_t</span>* <span class="param">context</span>, <span class="kw">const</span> <span class="kw">char</span>* <span class="param">path</span>)</code></h3>
+    <p class="summary">Get first matching node (convenience wrapper) Equivalent to cyaml_path_query + taking first result + free.</p><div class="params"><h4>Parameters</h4><dl><dt><code>doc</code></dt><dd>Document to query</dd><dt><code>context</code></dt><dd>Context node for relative paths (NULL = use root)</dd><dt><code>path</code></dt><dd>YPATH expression</dd></dl></div><div class="returns"><h4>Returns</h4><p>First matching node or NULL on error/no match</p></div>
+  </div><div class="function" id="cyaml_path_debug">
+    <h3><code><span class="kw">void</span> <span class="fn">cyaml_path_debug</span>(<span class="kw">const</span> <span class="kw">char</span>* <span class="param">path</span>)</code></h3>
+    <p class="summary">Debug: dump tokens and parsed AST to stdout</p><div class="params"><h4>Parameters</h4><dl><dt><code>path</code></dt><dd>YPATH expression to analyze</dd></dl></div>
+  </div></section>
+  </main>
+
+  <div class="search-modal" id="search-modal">
+    <div class="search-dialog">
+      <div class="search-input-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.35-4.35"></path>
+        </svg>
+        <input class="search-input" id="search-input" placeholder="Search documentation..." type="text">
+      </div>
+      <div class="search-results" id="search-results"></div>
+    </div>
+  </div>
+
+  <script src="../../assets/docs.js"></script>
+</body>
+</html>

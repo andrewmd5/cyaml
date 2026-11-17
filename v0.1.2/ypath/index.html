@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YPATH Specification - cyaml</title>
+  <meta name="description" content="YPATH is a query language for traversing and selecting nodes within YAML documents, similar to JSONPath or XPath.">
+  <link rel="canonical" href="https://cyaml.org/v0.1.2/ypath/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="YPATH Specification - cyaml">
+  <meta property="og:description" content="YPATH is a query language for traversing and selecting nodes within YAML documents, similar to JSONPath or XPath.">
+  <meta property="og:url" content="https://cyaml.org/v0.1.2/ypath/">
+  <meta property="og:site_name" content="cyaml">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="YPATH Specification - cyaml">
+  <meta name="twitter:description" content="YPATH is a query language for traversing and selecting nodes within YAML documents, similar to JSONPath or XPath.">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    "name": "cyaml",
+    "description": "YPATH is a query language for traversing and selecting nodes within YAML documents, similar to JSONPath or XPath.",
+    "url": "https://cyaml.org",
+    "codeRepository": "https://github.com/andrewmd5/cyaml",
+    "programmingLanguage": "C",
+    "license": "https://opensource.org/licenses/MIT"
+  }
+  </script>
+
+  <link rel="stylesheet" href="../../assets/styles.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a class="navbar-brand" href="../../">cyaml</a>
+    <div class="nav-tabs">
+      <a class="nav-tab" href="../">Home</a>
+      <a class="nav-tab" href="../api/">API Reference</a>
+      <a class="nav-tab active" href="../ypath/">YPATH Spec</a>
+    </div>
+    <div class="navbar-spacer"></div>
+    <select class="version-select" id="version-select" onchange="(function(sel){var p=location.pathname.match(/v[0-9.]+\/(.*)$/);window.location.href='../../'+sel.value+'/'+(p?p[1]:'')})(this)"><option value="v0.1.3">v0.1.3</option><option value="v0.1.2" selected>v0.1.2</option><option value="v0.1.1">v0.1.1</option><option value="v0.1.0">v0.1.0</option></select>
+    <button class="search-trigger" id="search-trigger" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <path d="m21 21-4.35-4.35"></path>
+      </svg>
+      <span>Search...</span>
+      <kbd>⌘K</kbd>
+    </button>
+    <a class="github-link" href="https://github.com/andrewmd5/cyaml" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+      </svg>
+    </a>
+  </nav>
+
+  <aside class="sidebar hidden" id="sidebar"></aside>
+
+  <main class="main no-sidebar" id="main">
+    <div class="markdown"><h1 id="ypath-specification">YPATH Specification</h1>
+<p><strong>Version 1.0</strong></p>
+<h2 id="abstract">Abstract</h2>
+<p>YPATH is a query language for traversing and selecting nodes within YAML documents. This specification defines the syntax and semantics of YPATH expressions, which evaluate against a context node to produce a node set.</p>
+<hr />
+<h2 id="1-introduction">1. Introduction</h2>
+<h3 id="11-purpose">1.1 Purpose</h3>
+<p>YAML documents form directed graphs of nodes. YPATH provides a standard notation for selecting nodes within these graphs. Given a document and an expression, a conforming implementation produces the set of all matching nodes.</p>
+<h3 id="12-scope">1.2 Scope</h3>
+<p>This specification defines:</p>
+<ul>
+<li>The data model on which YPATH operates</li>
+<li>The syntax of YPATH expressions</li>
+<li>The semantics of expression evaluation</li>
+<li>Conformance requirements for implementations</li>
+</ul>
+<h3 id="13-notation">1.3 Notation</h3>
+<p>This document uses Extended Backus-Naur Form (EBNF) for grammar definitions:</p>
+<pre><code>=           definition
+|           alternation
+[ ... ]     optional (zero or one)
+{ ... }     repetition (zero or more)
+( ... )     grouping
+' ... '     literal character
+&quot; ... &quot;     literal string
+</code></pre>
+<hr />
+<h2 id="2-data-model">2. Data Model</h2>
+<h3 id="21-node-types">2.1 Node Types</h3>
+<p>YPATH operates on the logical structure of a YAML document. Every node has one of three types:</p>
+<dl>
+<dt><strong>Scalar</strong></dt>
+<dd>An atomic value. Scalars include strings, integers, floats, booleans, and null.</dd>
+<dt><strong>Sequence</strong></dt>
+<dd>An ordered collection of nodes. Elements are indexed by integers starting at zero.</dd>
+<dt><strong>Mapping</strong></dt>
+<dd>A collection of key-value pairs. Keys are unique within a mapping. Key order is preserved but not semantically significant.</dd>
+</dl>
+<h3 id="22-document-root">2.2 Document Root</h3>
+<p>Every YAML document has exactly one root node. The root may be a scalar, sequence, or mapping. The root serves as the entry point for absolute paths.</p>
+<h3 id="23-parent-relationships">2.3 Parent Relationships</h3>
+<p>Every node except the root has exactly one parent. The parent of a sequence element is the sequence. The parent of a mapping value is the mapping. The parent of a mapping key is also the mapping.</p>
+<h3 id="24-anchors-and-aliases">2.4 Anchors and Aliases</h3>
+<p>A node may have an anchor, written <code>&amp;name</code> in YAML source. An alias, written <code>*name</code>, creates a reference to the anchored node. Anchors and aliases enable graph structures within documents.</p>
+<hr />
+<h2 id="3-expression-structure">3. Expression Structure</h2>
+<h3 id="31-paths">3.1 Paths</h3>
+<p>A YPATH expression consists of a sequence of steps separated by <code>/</code>. Each step selects nodes based on the current context. The selected nodes become the context for the next step.</p>
+<p>There are two path forms:</p>
+<dl>
+<dt><strong>Absolute Path</strong></dt>
+<dd>Begins with <code>/</code>. Evaluation starts from the document root.</dd>
+<dt><strong>Relative Path</strong></dt>
+<dd>Does not begin with <code>/</code>. Evaluation starts from the current context node.</dd>
+</dl>
+<h3 id="32-context">3.2 Context</h3>
+<p>Every expression evaluates within a context. The context consists of:</p>
+<ul>
+<li>A context node (the current position in the document)</li>
+<li>A context position (when iterating over a node set)</li>
+<li>A context size (the total nodes in the current set)</li>
+</ul>
+<h3 id="33-node-sets">3.3 Node Sets</h3>
+<p>Expressions produce node sets. A node set is an ordered collection of zero or more nodes. Nodes appear in document order. A node appears at most once in any node set.</p>
+<hr />
+<h2 id="4-steps">4. Steps</h2>
+<p>A step selects nodes relative to the context. Steps fall into several categories.</p>
+<h3 id="41-identity">4.1 Identity</h3>
+<p>The identity step <code>.</code> selects the context node itself.</p>
+<pre><code>.           Selects the current node
+</code></pre>
+<h3 id="42-parent">4.2 Parent</h3>
+<p>The parent step <code>..</code> selects the parent of the context node. If the context node is the root, the result is empty.</p>
+<pre><code>..          Selects the parent node
+</code></pre>
+<h3 id="43-child-selection">4.3 Child Selection</h3>
+<p>Child selectors retrieve immediate children of the context node.</p>
+<dl>
+<dt><strong>Named Child</strong></dt>
+<dd>An identifier selects the value from a mapping where the key matches.</dd>
+</dl>
+<pre><code>foo         Selects the value for key &quot;foo&quot;
+</code></pre>
+<dl>
+<dt><strong>Wildcard</strong></dt>
+<dd>The <code>*</code> selector selects all children.</dd>
+</dl>
+<pre><code>*           For a mapping: selects all values
+            For a sequence: selects all elements
+            For a scalar: selects nothing
+</code></pre>
+<h3 id="44-recursive-descent">4.4 Recursive Descent</h3>
+<p>The <code>**</code> selector selects the context node and all descendants recursively.</p>
+<pre><code>**          Selects current node and all descendants
+</code></pre>
+<p>When followed by another step, recursive descent finds all nodes at any depth that match the subsequent step.</p>
+<h3 id="45-alias-dereferencing">4.5 Alias Dereferencing</h3>
+<p>The <code>*</code> prefix followed by an identifier resolves an alias.</p>
+<pre><code>*foo        Selects the node anchored as &quot;foo&quot;
+</code></pre>
+<hr />
+<h2 id="5-bracket-expressions">5. Bracket Expressions</h2>
+<p>Bracket expressions provide indexing, slicing, and filtering. They are enclosed in <code>[</code> and <code>]</code>.</p>
+<h3 id="51-index-selection">5.1 Index Selection</h3>
+<p>An integer index selects a single element from a sequence.</p>
+<pre><code>[0]         Selects the first element
+[1]         Selects the second element
+[-1]        Selects the last element
+[-2]        Selects the second-to-last element
+</code></pre>
+<p>Positive indices count from the start (zero-based). Negative indices count from the end. Out-of-bounds indices produce an empty result.</p>
+<h3 id="52-slice-selection">5.2 Slice Selection</h3>
+<p>A slice selects a range of elements from a sequence.</p>
+<pre><code>[start:end]         Elements from start to end (exclusive)
+[start:end:step]    Elements from start to end with stride
+</code></pre>
+<p><strong>Parameters:</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Parameter</th>
+<th style="text-align: left;">Default</th>
+<th style="text-align: left;">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">start</td>
+<td style="text-align: left;">0</td>
+<td style="text-align: left;">First index (inclusive)</td>
+</tr>
+<tr>
+<td style="text-align: left;">end</td>
+<td style="text-align: left;">length</td>
+<td style="text-align: left;">Last index (exclusive)</td>
+</tr>
+<tr>
+<td style="text-align: left;">step</td>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">Stride between elements</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<pre><code>[0:3]       First three elements
+[1:]        All elements except the first
+[:-1]       All elements except the last
+[::2]       Every other element
+[::-1]      All elements in reverse order
+</code></pre>
+<h3 id="53-filter-selection">5.3 Filter Selection</h3>
+<p>A filter selects nodes that satisfy a predicate. Filters begin with <code>?</code>.</p>
+<pre><code>[?expression]       Selects nodes where expression is true
+</code></pre>
+<p>The expression evaluates once for each node in the context. Nodes for which the expression produces a truthy value are included in the result.</p>
+<hr />
+<h2 id="6-filter-expressions">6. Filter Expressions</h2>
+<p>Filter expressions support comparison, logical, and arithmetic operations.</p>
+<h3 id="61-current-node-reference">6.1 Current Node Reference</h3>
+<p>Within a filter, <code>@</code> refers to the node being tested.</p>
+<pre><code>@           The current node under evaluation
+@.price     The &quot;price&quot; child of the current node
+@[0]        The first element of the current node
+</code></pre>
+<h3 id="62-operators">6.2 Operators</h3>
+<p>Operators are listed from lowest to highest precedence.</p>
+<p><strong>Logical Or</strong></p>
+<pre><code>||          True if either operand is true
+</code></pre>
+<p><strong>Logical And</strong></p>
+<pre><code>&amp;&amp;          True if both operands are true
+</code></pre>
+<p><strong>Equality</strong></p>
+<pre><code>==          True if operands are equal
+!=          True if operands are not equal
+</code></pre>
+<p><strong>Relational</strong></p>
+<pre><code>&lt;           True if left is less than right
+&lt;=          True if left is less than or equal to right
+&gt;           True if left is greater than right
+&gt;=          True if left is greater than or equal to right
+</code></pre>
+<p><strong>Additive</strong></p>
+<pre><code>+           Addition
+-           Subtraction
+</code></pre>
+<p><strong>Multiplicative</strong></p>
+<pre><code>*           Multiplication
+/           Division
+</code></pre>
+<p><strong>Unary</strong></p>
+<pre><code>-           Numeric negation
+!           Logical negation
+</code></pre>
+<h3 id="63-literals">6.3 Literals</h3>
+<p>Filter expressions may contain literal values.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Examples</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Integer</td>
+<td style="text-align: left;"><code>0</code>, <code>42</code>, <code>-17</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Float</td>
+<td style="text-align: left;"><code>3.14</code>, <code>-0.5</code>, <code>1e10</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">String</td>
+<td style="text-align: left;"><code>"hello"</code>, <code>'world'</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Boolean</td>
+<td style="text-align: left;"><code>true</code>, <code>false</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Null</td>
+<td style="text-align: left;"><code>null</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="64-parentheses">6.4 Parentheses</h3>
+<p>Parentheses override operator precedence.</p>
+<pre><code>(a || b) &amp;&amp; c       Evaluates or before and
+</code></pre>
+<hr />
+<h2 id="7-formal-grammar">7. Formal Grammar</h2>
+<h3 id="71-path-productions">7.1 Path Productions</h3>
+<pre><code class="language-ebnf">path            = absolute_path
+                | relative_path ;
+
+absolute_path   = &quot;/&quot; , [ relative_path ] ;
+
+relative_path   = step , { &quot;/&quot; , step } ;
+</code></pre>
+<h3 id="72-step-productions">7.2 Step Productions</h3>
+<pre><code class="language-ebnf">step            = identity
+                | parent
+                | recursive
+                | wildcard
+                | name
+                | alias
+                | bracket_expr ;
+
+identity        = &quot;.&quot; ;
+
+parent          = &quot;..&quot; ;
+
+recursive       = &quot;**&quot; ;
+
+wildcard        = &quot;*&quot; ;
+
+name            = identifier ;
+
+alias           = &quot;*&quot; , identifier ;
+
+bracket_expr    = &quot;[&quot; , bracket_content , &quot;]&quot; ;
+
+bracket_content = index
+                | slice
+                | filter ;
+</code></pre>
+<h3 id="73-bracket-productions">7.3 Bracket Productions</h3>
+<pre><code class="language-ebnf">index           = integer ;
+
+slice           = [ integer ] , &quot;:&quot; , [ integer ] , [ &quot;:&quot; , [ integer ] ] ;
+
+filter          = &quot;?&quot; , expression ;
+</code></pre>
+<h3 id="74-expression-productions">7.4 Expression Productions</h3>
+<pre><code class="language-ebnf">expression      = logical_or ;
+
+logical_or      = logical_and , { &quot;||&quot; , logical_and } ;
+
+logical_and     = equality , { &quot;&amp;&amp;&quot; , equality } ;
+
+equality        = relational , { ( &quot;==&quot; | &quot;!=&quot; ) , relational } ;
+
+relational      = additive , { ( &quot;&lt;&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&gt;=&quot; ) , additive } ;
+
+additive        = multiplicative , { ( &quot;+&quot; | &quot;-&quot; ) , multiplicative } ;
+
+multiplicative  = unary , { ( &quot;*&quot; | &quot;/&quot; ) , unary } ;
+
+unary           = [ &quot;-&quot; | &quot;!&quot; ] , primary ;
+
+primary         = literal
+                | path_expr
+                | &quot;(&quot; , expression , &quot;)&quot; ;
+
+path_expr       = &quot;@&quot; , { &quot;/&quot; , step } ;
+</code></pre>
+<h3 id="75-lexical-productions">7.5 Lexical Productions</h3>
+<pre><code class="language-ebnf">literal         = integer
+                | float
+                | string
+                | &quot;true&quot;
+                | &quot;false&quot;
+                | &quot;null&quot; ;
+
+identifier      = name_start , { name_char } ;
+
+name_start      = letter | &quot;_&quot; ;
+
+name_char       = letter | digit | &quot;_&quot; ;
+
+integer         = [ &quot;-&quot; ] , digit , { digit } ;
+
+float           = integer , &quot;.&quot; , digit , { digit } , [ exponent ]
+                | integer , exponent ;
+
+exponent        = ( &quot;e&quot; | &quot;E&quot; ) , [ &quot;+&quot; | &quot;-&quot; ] , digit , { digit } ;
+
+string          = double_string | single_string ;
+
+double_string   = '&quot;' , { dq_char | escape } , '&quot;' ;
+
+single_string   = &quot;'&quot; , { sq_char | &quot;''&quot; } , &quot;'&quot; ;
+
+dq_char         = ? any character except &quot; and \ ? ;
+
+sq_char         = ? any character except ' ? ;
+
+escape          = &quot;\&quot; , ( '&quot;' | &quot;\&quot; | &quot;n&quot; | &quot;r&quot; | &quot;t&quot; | &quot;b&quot; | &quot;f&quot; ) ;
+
+letter          = &quot;A&quot; | ... | &quot;Z&quot; | &quot;a&quot; | ... | &quot;z&quot; ;
+
+digit           = &quot;0&quot; | ... | &quot;9&quot; ;
+</code></pre>
+<hr />
+<h2 id="8-railroad-diagrams">8. Railroad Diagrams</h2>
+<h3 id="81-path">8.1 Path</h3>
+<pre><code>              ┌─────┐
+         ┌────┤  /  ├────────────────────────┐
+         │    └─────┘                        │
+         │                                   │
+Path ────┼───────────────────────────────────┼────►
+         │                                   │
+         │    ┌────────┐       ┌─────┐       │
+         └────┤  step  ├───┬───┤  /  ├───┐   │
+              └────────┘   │   └─────┘   │   │
+                           │      │      │   │
+                           │      ▼      │   │
+                           │  ┌────────┐ │   │
+                           │  │  step  ├─┘   │
+                           │  └────────┘     │
+                           │                 │
+                           └─────────────────┘
+</code></pre>
+<h3 id="82-step">8.2 Step</h3>
+<pre><code>              ┌─────────┐
+         ┌────┤    .    ├────┐
+         │    └─────────┘    │
+         │                   │
+         │    ┌─────────┐    │
+         ├────┤   ..    ├────┤
+         │    └─────────┘    │
+         │                   │
+         │    ┌─────────┐    │
+         ├────┤    *    ├────┤
+         │    └─────────┘    │
+         │                   │
+         │    ┌─────────┐    │
+Step ────┼────┤   **    ├────┼────►
+         │    └─────────┘    │
+         │                   │
+         │    ┌─────────┐    │
+         ├────┤  name   ├────┤
+         │    └─────────┘    │
+         │                   │
+         │  ┌───┐ ┌──────┐   │
+         ├──┤ * ├─┤ name ├───┤
+         │  └───┘ └──────┘   │
+         │                   │
+         │  ┌───┐ ┌──────┐ ┌───┐
+         └──┤ [ ├─┤ expr ├─┤ ] ├─┘
+            └───┘ └──────┘ └───┘
+</code></pre>
+<h3 id="83-bracket-expression">8.3 Bracket Expression</h3>
+<pre><code>                   ┌─────────────┐
+              ┌────┤   integer   ├────┐
+              │    └─────────────┘    │
+              │                       │
+              │    ┌───────────┐      │
+Bracket ──────┼────┤   slice   ├──────┼────►
+              │    └───────────┘      │
+              │                       │
+              │  ┌───┐ ┌──────────┐   │
+              └──┤ ? ├─┤   expr   ├───┘
+                 └───┘ └──────────┘
+</code></pre>
+<h3 id="84-slice">8.4 Slice</h3>
+<pre><code>           ┌─────────┐   ┌───┐   ┌─────────┐
+Slice ──┬──┤ integer ├─┬─┤ : ├─┬─┤ integer ├─┬──────────────────────┬──►
+        │  └─────────┘ │ └───┘ │ └─────────┘ │                      │
+        │              │       │             │                      │
+        └──────────────┘       └─────────────┤                      │
+                                             │  ┌───┐  ┌─────────┐  │
+                                             └──┤ : ├──┤ integer ├──┤
+                                                └───┘  └─────────┘  │
+                                                       │            │
+                                                       └────────────┘
+</code></pre>
+<h3 id="85-filter-expression">8.5 Filter Expression</h3>
+<pre><code>                 ┌─────────────┐
+            ┌────┤   literal   ├────┐
+            │    └─────────────┘    │
+            │                       │
+            │    ┌─────────────┐    │
+            ├────┤      @      ├────┤
+Primary ────┤    └─────────────┘    ├────►
+            │                       │
+            │  ┌───┐ ┌──────┐ ┌───┐ │
+            └──┤ ( ├─┤ expr ├─┤ ) ├─┘
+               └───┘ └──────┘ └───┘
+</code></pre>
+<h3 id="86-operator-precedence">8.6 Operator Precedence</h3>
+<pre><code>Lowest      ||
+            &amp;&amp;
+            ==  !=
+            &lt;   &lt;=   &gt;   &gt;=
+            +   -
+            *   /
+Highest     -   !   (unary)
+</code></pre>
+<hr />
+<h2 id="9-evaluation-semantics">9. Evaluation Semantics</h2>
+<h3 id="91-path-evaluation">9.1 Path Evaluation</h3>
+<p>Path evaluation proceeds step by step:</p>
+<ol>
+<li>Initialize the context with the starting node.</li>
+<li>For each step in the path:
+   a. Apply the step to each node in the current context.
+   b. Collect all selected nodes into a new node set.
+   c. Remove duplicates, preserving document order.
+   d. The new node set becomes the context for the next step.</li>
+<li>Return the final node set.</li>
+</ol>
+<h3 id="92-step-evaluation">9.2 Step Evaluation</h3>
+<p>Each step type has specific evaluation rules:</p>
+<dl>
+<dt><strong>Identity (.)</strong></dt>
+<dd>Returns a set containing only the context node.</dd>
+<dt><strong>Parent (..)</strong></dt>
+<dd>Returns a set containing the parent of the context node, or empty if at root.</dd>
+<dt><strong>Wildcard (*)</strong></dt>
+<dd>For mappings, returns all values. For sequences, returns all elements. For scalars, returns empty.</dd>
+<dt><strong>Recursive (**)</strong></dt>
+<dd>Returns the context node plus all descendants in document order.</dd>
+<dt><strong>Name (identifier)</strong></dt>
+<dd>For mappings, returns the value for the matching key. For other types, returns empty.</dd>
+<dt><strong>Alias (*name)</strong></dt>
+<dd>Returns the node with the specified anchor, or empty if not found.</dd>
+</dl>
+<h3 id="93-filter-evaluation">9.3 Filter Evaluation</h3>
+<p>For each node in the context:</p>
+<ol>
+<li>Bind <code>@</code> to the current node.</li>
+<li>Evaluate the filter expression.</li>
+<li>If the result is truthy, include the node in the output.</li>
+</ol>
+<p>Truthy values: non-empty strings, non-zero numbers, <code>true</code>, non-empty node sets.
+Falsy values: empty strings, zero, <code>false</code>, <code>null</code>, empty node sets.</p>
+<h3 id="94-type-coercion">9.4 Type Coercion</h3>
+<p>When operators require specific types:</p>
+<ul>
+<li>Scalars convert to their natural type (string, number, boolean).</li>
+<li>Node sets containing one scalar convert to that scalar's value.</li>
+<li>Other conversions produce <code>null</code>.</li>
+</ul>
+<hr />
+<h2 id="10-examples">10. Examples</h2>
+<h3 id="101-basic-navigation">10.1 Basic Navigation</h3>
+<p>Document:</p>
+<pre><code class="language-yaml">store:
+  name: &quot;Books &amp; Co&quot;
+  books:
+    - title: &quot;YAML Essentials&quot;
+      price: 29.99
+    - title: &quot;Data Formats&quot;
+      price: 39.99
+  location:
+    city: &quot;Portland&quot;
+    state: &quot;OR&quot;
+</code></pre>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Expression</th>
+<th style="text-align: left;">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>/</code></td>
+<td style="text-align: left;">Document root</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store</code></td>
+<td style="text-align: left;">The store mapping</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/name</code></td>
+<td style="text-align: left;"><code>"Books &amp; Co"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books</code></td>
+<td style="text-align: left;">The books sequence</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books[0]</code></td>
+<td style="text-align: left;">First book mapping</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books[0]/title</code></td>
+<td style="text-align: left;"><code>"YAML Essentials"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books[-1]/price</code></td>
+<td style="text-align: left;"><code>39.99</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="102-wildcards">10.2 Wildcards</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Expression</th>
+<th style="text-align: left;">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>/store/*</code></td>
+<td style="text-align: left;">All children of store (name, books, location)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books[*]</code></td>
+<td style="text-align: left;">All books (same as <code>/store/books/*</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books/*/title</code></td>
+<td style="text-align: left;">All book titles</td>
+</tr>
+</tbody>
+</table>
+<h3 id="103-recursive-descent">10.3 Recursive Descent</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Expression</th>
+<th style="text-align: left;">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>/store/**</code></td>
+<td style="text-align: left;">Store and all descendants</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/**/title</code></td>
+<td style="text-align: left;">All title nodes anywhere in document</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/**/price</code></td>
+<td style="text-align: left;">All price nodes anywhere in document</td>
+</tr>
+</tbody>
+</table>
+<h3 id="104-slices">10.4 Slices</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Expression</th>
+<th style="text-align: left;">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>/store/books[0:1]</code></td>
+<td style="text-align: left;">First book only</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books[0:2]</code></td>
+<td style="text-align: left;">First two books</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books[1:]</code></td>
+<td style="text-align: left;">All books except the first</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books[:-1]</code></td>
+<td style="text-align: left;">All books except the last</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books[::-1]</code></td>
+<td style="text-align: left;">All books in reverse order</td>
+</tr>
+</tbody>
+</table>
+<h3 id="105-filters">10.5 Filters</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Expression</th>
+<th style="text-align: left;">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>/store/books[?@.price &lt; 35]</code></td>
+<td style="text-align: left;">Books priced under 35</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books[?@.price &gt;= 30 &amp;&amp; @.price &lt;= 40]</code></td>
+<td style="text-align: left;">Books priced 30 to 40</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/store/books[?@.title == "YAML Essentials"]</code></td>
+<td style="text-align: left;">Books with matching title</td>
+</tr>
+</tbody>
+</table>
+<h3 id="106-anchors-and-aliases">10.6 Anchors and Aliases</h3>
+<p>Document:</p>
+<pre><code class="language-yaml">defaults: &amp;defaults
+  timeout: 30
+  retries: 3
+
+production:
+  &lt;&lt;: *defaults
+  timeout: 60
+
+staging:
+  &lt;&lt;: *defaults
+</code></pre>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Expression</th>
+<th style="text-align: left;">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>/*defaults</code></td>
+<td style="text-align: left;">The anchored defaults mapping</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/production/timeout</code></td>
+<td style="text-align: left;"><code>60</code> (overridden value)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>/staging/timeout</code></td>
+<td style="text-align: left;"><code>30</code> (from defaults)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="11-conformance">11. Conformance</h2>
+<h3 id="111-levels">11.1 Levels</h3>
+<p>This specification defines two conformance levels:</p>
+<dl>
+<dt><strong>Level 1 (Core)</strong></dt>
+<dd>Implementations must support:
+- Absolute and relative paths
+- Identity, parent, and name steps
+- Index selection
+- Alias dereferencing</dd>
+<dt><strong>Level 2 (Full)</strong></dt>
+<dd>Implementations must additionally support:
+- Wildcard and recursive descent
+- Slice selection
+- Filter expressions with all operators</dd>
+</dl>
+<h3 id="112-error-handling">11.2 Error Handling</h3>
+<p>Implementations must distinguish:</p>
+<ul>
+<li><strong>Syntax errors</strong>: The expression is malformed.</li>
+<li><strong>Type errors</strong>: An operation is applied to an incompatible type.</li>
+<li><strong>Empty results</strong>: The path is valid but matches no nodes.</li>
+</ul>
+<p>Type errors MUST handled by raising errors</p>
+<hr />
+<h2 id="appendix-a-comparison-with-related-languages">Appendix A. Comparison with Related Languages</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Feature</th>
+<th style="text-align: center;">YPATH</th>
+<th style="text-align: center;">JSONPath</th>
+<th style="text-align: center;">XPath 1.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Root</td>
+<td style="text-align: center;"><code>/</code></td>
+<td style="text-align: center;"><code>$</code></td>
+<td style="text-align: center;"><code>/</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Current node</td>
+<td style="text-align: center;"><code>.</code></td>
+<td style="text-align: center;"><code>@</code></td>
+<td style="text-align: center;"><code>.</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Parent</td>
+<td style="text-align: center;"><code>..</code></td>
+<td style="text-align: center;">N/A</td>
+<td style="text-align: center;"><code>..</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Child</td>
+<td style="text-align: center;"><code>/name</code></td>
+<td style="text-align: center;"><code>.name</code></td>
+<td style="text-align: center;"><code>/child</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Wildcard</td>
+<td style="text-align: center;"><code>*</code></td>
+<td style="text-align: center;"><code>*</code></td>
+<td style="text-align: center;"><code>*</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Recursive</td>
+<td style="text-align: center;"><code>**</code></td>
+<td style="text-align: center;"><code>..</code></td>
+<td style="text-align: center;"><code>//</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Index</td>
+<td style="text-align: center;"><code>[0]</code></td>
+<td style="text-align: center;"><code>[0]</code></td>
+<td style="text-align: center;"><code>[1]</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Slice</td>
+<td style="text-align: center;"><code>[0:2]</code></td>
+<td style="text-align: center;"><code>[0:2]</code></td>
+<td style="text-align: center;">N/A</td>
+</tr>
+<tr>
+<td style="text-align: left;">Filter</td>
+<td style="text-align: center;"><code>[?expr]</code></td>
+<td style="text-align: center;"><code>[?(expr)]</code></td>
+<td style="text-align: center;"><code>[pred]</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Filter context</td>
+<td style="text-align: center;"><code>@</code></td>
+<td style="text-align: center;"><code>@</code></td>
+<td style="text-align: center;"><code>.</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="appendix-b-reserved-for-future-use">Appendix B. Reserved for Future Use</h2>
+<p>The following syntax elements are reserved:</p>
+<ul>
+<li><code>$</code> (variable reference)</li>
+<li><code>|</code> (union operator)</li>
+<li><code>~</code> (type selector)</li>
+<li>Function call syntax <code>name(...)</code></li>
+</ul>
+<p>Implementations should reject these as syntax errors until future specification versions define their semantics.</p></div>
+  </main>
+
+  <div class="search-modal" id="search-modal">
+    <div class="search-dialog">
+      <div class="search-input-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.35-4.35"></path>
+        </svg>
+        <input class="search-input" id="search-input" placeholder="Search documentation..." type="text">
+      </div>
+      <div class="search-results" id="search-results"></div>
+    </div>
+  </div>
+
+  <script src="../../assets/docs.js"></script>
+</body>
+</html>
