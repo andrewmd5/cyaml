@@ -302,6 +302,8 @@ typedef struct {
 
 #define EVENT_PUSH(stk, cnt, cap, nd, st, dp, on_fail)                     \
     do {                                                                   \
+        /* Capture frame arguments before realloc can invalidate them. */  \
+        event_frame_t next_frame = { (nd), 0, (st), (dp) };                 \
         if ((cnt) >= (cap)) {                                              \
             size_t new_cap = (cap) * 2;                                    \
             event_frame_t* tmp = realloc((stk), new_cap * sizeof(*(stk))); \
@@ -311,7 +313,7 @@ typedef struct {
             (stk) = tmp;                                                   \
             (cap) = new_cap;                                               \
         }                                                                  \
-        (stk)[(cnt)] = (event_frame_t) { (nd), 0, (st), (dp) };            \
+        (stk)[(cnt)] = next_frame;                                         \
         (cnt)++;                                                           \
     } while (0)
 
@@ -798,8 +800,8 @@ static bool event_node(event_buf_t* e, const cyaml_node_t* root, int start_depth
             break;
 
         case EFRAME_MAP_VAL:
-            EV_PUSH(n->map.pairs[f->child_idx++].val, EFRAME_VALUE, f->depth + 1);
             f->state = EFRAME_MAP_PAIR;
+            EV_PUSH(n->map.pairs[f->child_idx++].val, EFRAME_VALUE, f->depth + 1);
             break;
 
         case EFRAME_MAP_CLOSE:

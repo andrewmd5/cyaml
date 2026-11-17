@@ -661,18 +661,21 @@ defaults: &defaults
   retries: 3
 
 production:
-  <<: *defaults
+  settings: *defaults
   timeout: 60
 
 staging:
-  <<: *defaults
+  settings: *defaults
 ```
 
 | Expression | Result |
 |:-----------|:-------|
 | `/*defaults` | The anchored defaults mapping |
 | `/production/timeout` | `60` (overridden value) |
-| `/staging/timeout` | `30` (from defaults) |
+| `/staging/settings/timeout` | `30` (through the alias) |
+
+YAML 1.1 merge keys (`<<`) have no special meaning in YAML 1.2. YPATH
+dereferences aliases during navigation, but does not expand merge keys.
 
 ---
 

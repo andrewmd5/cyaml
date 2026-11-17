@@ -26,6 +26,10 @@ cyaml was written to support [Dawn](https://github.com/andrewmd5/dawn), which ne
 - No dependencies beyond the C standard library
 - Builds on Windows, macOS, Linux, and BSD
 
+YAML 1.1 merge keys (`<<`) are intentionally not expanded. YAML 1.2 removed
+their special mapping semantics, so cyaml treats `<<` as an ordinary scalar
+key while continuing to resolve its alias value normally.
+
 ## Building
 
 ```bash

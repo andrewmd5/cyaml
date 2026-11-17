@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Version.cmake")
 project(cyaml
-    VERSION 0.0.0
+    VERSION ${CYAML_VERSION}
     DESCRIPTION "Ultralightweight YAML parser & emitter in C11"
     LANGUAGES C
 )
@@ -9,31 +11,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-find_package(Git QUIET)
-if(GIT_FOUND)
-    execute_process(
-        COMMAND ${GIT_EXECUTABLE} describe --tags --always
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        OUTPUT_VARIABLE GIT_VERSION
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-        RESULT_VARIABLE GIT_RESULT
-    )
-    if(GIT_RESULT EQUAL 0 AND GIT_VERSION MATCHES "^v?[0-9]+\\.[0-9]+")
-        string(REGEX REPLACE "^v" "" CYAML_VERSION_STR "${GIT_VERSION}")
-    else()
-        set(CYAML_VERSION_STR "${PROJECT_VERSION}-dev")
-    endif()
-else()
-    set(CYAML_VERSION_STR "${PROJECT_VERSION}-dev")
-endif()
 message(STATUS "CYAML version: ${CYAML_VERSION_STR}")
-
-string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" _ "${CYAML_VERSION_STR}")
-set(CYAML_VERSION_MAJOR ${CMAKE_MATCH_1})
-set(CYAML_VERSION_MINOR ${CMAKE_MATCH_2})
-set(CYAML_VERSION_PATCH ${CMAKE_MATCH_3})
-set(CYAML_VERSION "${CYAML_VERSION_MAJOR}.${CYAML_VERSION_MINOR}.${CYAML_VERSION_PATCH}")
+configure_file(cmake/cyaml_version.h.in generated/cyaml_version.h @ONLY)
 
 option(CYAML_BUILD_TESTS "Build test suite" ON)
 option(CYAML_BUILD_SHARED "Build shared library" ON)
@@ -117,7 +96,8 @@ if(CYAML_BUILD_STATIC)
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:include>
     )
-    target_compile_definitions(cyaml_static PRIVATE CYAML_VERSION_STR="${CYAML_VERSION_STR}")
+    target_include_directories(cyaml_static PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    target_compile_definitions(cyaml_static PRIVATE CYAML_USE_GENERATED_VERSION)
     set_target_properties(cyaml_static PROPERTIES OUTPUT_NAME cyaml PUBLIC_HEADER "${CYAML_HEADERS}")
     if(UNIX AND NOT APPLE)
         target_link_libraries(cyaml_static PRIVATE m)
@@ -130,7 +110,8 @@ if(CYAML_BUILD_SHARED)
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:include>
     )
-    target_compile_definitions(cyaml_shared PRIVATE CYAML_VERSION_STR="${CYAML_VERSION_STR}")
+    target_include_directories(cyaml_shared PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    target_compile_definitions(cyaml_shared PRIVATE CYAML_USE_GENERATED_VERSION)
     set_target_properties(cyaml_shared PROPERTIES
         OUTPUT_NAME cyaml
         VERSION ${CYAML_VERSION}
@@ -169,12 +150,16 @@ if(CYAML_BUILD_TESTS)
 
     set(CYAML_LIB $<IF:$<BOOL:${CYAML_BUILD_STATIC}>,cyaml_static,cyaml_shared>)
 
-    add_executable(test_api tests/test_api.c)
-    target_link_libraries(test_api PRIVATE unity ${CYAML_LIB})
-    if(UNIX AND NOT APPLE)
-        target_link_libraries(test_api PRIVATE m)
-    endif()
-    add_test(NAME test_api COMMAND test_api)
+    file(GLOB CYAML_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.c")
+    foreach(TEST_SOURCE IN LISTS CYAML_TEST_SOURCES)
+        get_filename_component(TEST_NAME "${TEST_SOURCE}" NAME_WE)
+        add_executable(${TEST_NAME} "${TEST_SOURCE}")
+        target_link_libraries(${TEST_NAME} PRIVATE unity ${CYAML_LIB})
+        if(UNIX AND NOT APPLE)
+            target_link_libraries(${TEST_NAME} PRIVATE m)
+        endif()
+        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    endforeach()
 
     foreach(TOOL cyaml_suite dump_debug parse_debug emit_debug json_debug results_query ypath_test ypath_debug summary_gen)
         if(TOOL STREQUAL "cyaml_suite")
@@ -223,7 +208,10 @@ write_basic_package_version_file(
     VERSION ${CYAML_VERSION}
     COMPATIBILITY SameMajorVersion
 )
-configure_file(cmake/cyamlConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/cyamlConfig.cmake" @ONLY)
+configure_package_config_file(
+    cmake/cyamlConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/cyamlConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cyaml
+)
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/cyamlConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/cyamlConfigVersion.cmake"

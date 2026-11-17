@@ -971,6 +971,8 @@ typedef struct {
 
 #define RESOLVE_PUSH(stk, cnt, cap, ptr, st, on_fail)                        \
     do {                                                                     \
+        /* Capture frame arguments before realloc can invalidate them. */    \
+        resolve_frame_t next_frame = { (ptr), 0, (st) };                      \
         if ((cnt) >= (cap)) {                                                \
             size_t new_cap = (cap) * 2;                                      \
             resolve_frame_t* tmp = realloc((stk), new_cap * sizeof(*(stk))); \
@@ -980,9 +982,7 @@ typedef struct {
             (stk) = tmp;                                                     \
             (cap) = new_cap;                                                 \
         }                                                                    \
-        (stk)[(cnt)].node_ptr = (ptr);                                       \
-        (stk)[(cnt)].child_idx = 0;                                          \
-        (stk)[(cnt)].state = (st);                                           \
+        (stk)[(cnt)] = next_frame;                                           \
         (cnt)++;                                                             \
     } while (0)
 

@@ -2397,13 +2397,17 @@ static bool parse_event(yaml_parser_t* p, event_t* event)
 // #region Composer [3.2]
 
 typedef struct {
+    cyaml_span_t name;
+    cyaml_node_t* node;
+    bool occupied;
+} anchor_entry_t;
+
+typedef struct {
     yaml_parser_t* parser;
     cyaml_doc_t* doc;
-    struct {
-        cyaml_span_t name;
-        cyaml_node_t* node;
-    } anchors[256];
+    anchor_entry_t* anchors;
     size_t anchor_count;
+    size_t anchor_cap;
 } composer_t;
 
 typedef enum {
@@ -2422,26 +2426,97 @@ typedef struct {
 
 static cyaml_node_t* compose_node(composer_t* c);
 
-static void register_anchor(composer_t* c, cyaml_span_t name, cyaml_node_t* node)
+static size_t anchor_hash(const char* name, size_t len)
 {
-    if (c->anchor_count < 256 && name.len > 0) {
-        c->anchors[c->anchor_count].name = name;
-        c->anchors[c->anchor_count].node = node;
-        c->anchor_count++;
+    size_t hash = sizeof(size_t) == 8
+        ? (size_t)14695981039346656037ULL
+        : (size_t)2166136261U;
+    const size_t prime = sizeof(size_t) == 8
+        ? (size_t)1099511628211ULL
+        : (size_t)16777619U;
+    for (size_t i = 0; i < len; i++) {
+        hash ^= (unsigned char)name[i];
+        hash *= prime;
     }
+    return hash;
+}
+
+static size_t anchor_slot(const composer_t* c, const anchor_entry_t* entries,
+    size_t cap, cyaml_span_t name)
+{
+    const char* src = cyaml_src(c->doc);
+    size_t slot = anchor_hash(src + name.off, name.len) & (cap - 1);
+    while (entries[slot].occupied) {
+        if (entries[slot].name.len == name.len
+            && memcmp(src + entries[slot].name.off,
+                   src + name.off, name.len)
+                == 0)
+            break;
+        slot = (slot + 1) & (cap - 1);
+    }
+    return slot;
+}
+
+static bool anchor_grow(composer_t* c)
+{
+    size_t new_cap = c->anchor_cap ? c->anchor_cap * 2 : 16;
+    if (new_cap < c->anchor_cap
+        || new_cap > SIZE_MAX / sizeof(anchor_entry_t))
+        return false;
+
+    anchor_entry_t* entries = calloc(new_cap, sizeof(*entries));
+    if (!entries)
+        return false;
+    for (size_t i = 0; i < c->anchor_cap; i++) {
+        if (!c->anchors[i].occupied)
+            continue;
+        size_t slot = anchor_slot(c, entries, new_cap, c->anchors[i].name);
+        entries[slot] = c->anchors[i];
+    }
+    free(c->anchors);
+    c->anchors = entries;
+    c->anchor_cap = new_cap;
+    return true;
+}
+
+static bool register_anchor(composer_t* c, cyaml_span_t name, cyaml_node_t* node)
+{
+    if (name.len == 0)
+        return true;
+    if (c->anchor_cap == 0) {
+        if (!anchor_grow(c)) {
+            set_synerr(c->parser->scanner, SYNERR_NOMEM);
+            return false;
+        }
+    }
+
+    size_t slot = anchor_slot(c, c->anchors, c->anchor_cap, name);
+    if (c->anchors[slot].occupied) {
+        c->anchors[slot].name = name;
+        c->anchors[slot].node = node;
+        return true;
+    }
+    if (c->anchor_count >= c->anchor_cap - c->anchor_cap / 4) {
+        if (!anchor_grow(c)) {
+            set_synerr(c->parser->scanner, SYNERR_NOMEM);
+            return false;
+        }
+        slot = anchor_slot(c, c->anchors, c->anchor_cap, name);
+    }
+
+    c->anchors[slot].occupied = true;
+    c->anchor_count++;
+    c->anchors[slot].name = name;
+    c->anchors[slot].node = node;
+    return true;
 }
 
 static cyaml_node_t* composer_resolve_alias(composer_t* c, cyaml_span_t name)
 {
-    const char* src = cyaml_src(c->doc);
-    // YAML 1.2 [7.1]: alias refers to most recent preceding node with same anchor
-    // Iterate backwards to find most recent definition
-    for (size_t i = c->anchor_count; i > 0; i--) {
-        if (c->anchors[i - 1].name.len == name.len && memcmp(src + c->anchors[i - 1].name.off, src + name.off, name.len) == 0) {
-            return c->anchors[i - 1].node;
-        }
-    }
-    return NULL;
+    if (name.len == 0 || c->anchor_cap == 0)
+        return NULL;
+    size_t slot = anchor_slot(c, c->anchors, c->anchor_cap, name);
+    return c->anchors[slot].occupied ? c->anchors[slot].node : NULL;
 }
 
 static cyaml_node_t* compose_scalar(composer_t* c, event_t* evt)
@@ -2470,8 +2545,8 @@ static cyaml_node_t* compose_scalar(composer_t* c, event_t* evt)
         }
     }
 
-    if (evt->anchor.len > 0)
-        register_anchor(c, evt->anchor, node);
+    if (!register_anchor(c, evt->anchor, node))
+        return NULL;
     return node;
 }
 
@@ -2527,8 +2602,8 @@ static cyaml_node_t* init_sequence(composer_t* c, event_t* evt)
     node->tag = evt->tag;
     node->span.start_line = evt->value.start_line;
     node->span.start_col = evt->value.start_col;
-    if (evt->anchor.len > 0)
-        register_anchor(c, evt->anchor, node);
+    if (!register_anchor(c, evt->anchor, node))
+        return NULL;
     return node;
 }
 
@@ -2543,8 +2618,8 @@ static cyaml_node_t* init_mapping(composer_t* c, event_t* evt)
     node->tag = evt->tag;
     node->span.start_line = evt->value.start_line;
     node->span.start_col = evt->value.start_col;
-    if (evt->anchor.len > 0)
-        register_anchor(c, evt->anchor, node);
+    if (!register_anchor(c, evt->anchor, node))
+        return NULL;
     return node;
 }
 
@@ -2729,8 +2804,9 @@ static cyaml_doc_t* parse_document_internal(scanner_t* scanner, yaml_parser_t* p
         }
     }
 
-    composer_t composer = { .parser = parser, .doc = doc, .anchor_count = 0 };
+    composer_t composer = { .parser = parser, .doc = doc };
     doc->root = compose_node(&composer);
+    free(composer.anchors);
 
     if (parse_event(parser, &evt) && evt.type == EVT_DOC_END && !evt.implicit)
         doc->flags |= CYAML_DOC_END;

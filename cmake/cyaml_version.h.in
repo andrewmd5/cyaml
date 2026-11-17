@@ -1,0 +1,6 @@
+#ifndef CYAML_VERSION_H
+#define CYAML_VERSION_H
+
+#define CYAML_VERSION_STR "@CYAML_VERSION_STR@"
+
+#endif

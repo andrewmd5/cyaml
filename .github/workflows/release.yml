@@ -42,6 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           submodules: recursive
 
       - name: Setup test suite (Unix)
@@ -83,7 +84,7 @@ jobs:
           cd build
           ./cyaml_suite ../refs/yaml-test-suite/data
           ./ypath_test ../refs/ypath/tests.yml
-          ./test_api
+          ctest --output-on-failure
 
       - name: Test (Windows)
         if: startsWith(matrix.os, 'windows')
@@ -91,7 +92,7 @@ jobs:
         run: |
           .\Release\cyaml_suite.exe ..\refs\yaml-test-suite\data
           .\Release\ypath_test.exe ..\refs\ypath\tests.yml
-          .\Release\test_api.exe
+          ctest -C Release --output-on-failure
 
       - name: Generate summary (Unix)
         if: "!startsWith(matrix.os, 'windows') && always()"
