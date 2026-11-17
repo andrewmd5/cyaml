@@ -1098,6 +1098,40 @@ void test_cyaml_dump(void)
     cyaml_free(doc);
 }
 
+void test_cyaml_dump_multiline_quote_as_plain(void)
+{
+    const char* input = "--- \"a\n...x\nb\"\n";
+    const char* expected = "--- a ...x b";
+    cyaml_error_t err;
+    cyaml_doc_t* doc = cyaml_parse(input, strlen(input), NULL, &err);
+    TEST_ASSERT_NOT_NULL(doc);
+
+    size_t len;
+    char* dump = cyaml_dump(doc, &len);
+    TEST_ASSERT_NOT_NULL(dump);
+    TEST_ASSERT_EQUAL_STRING(expected, dump);
+
+    free(dump);
+    cyaml_free(doc);
+}
+
+void test_cyaml_dump_adjacent_flow_key_as_plain(void)
+{
+    const char* input = "- { \"key\":value }\n- { \"key\"::value }\n";
+    const char* expected = "- key: value\n- key: :value";
+    cyaml_error_t err;
+    cyaml_doc_t* doc = cyaml_parse(input, strlen(input), NULL, &err);
+    TEST_ASSERT_NOT_NULL(doc);
+
+    size_t len;
+    char* dump = cyaml_dump(doc, &len);
+    TEST_ASSERT_NOT_NULL(dump);
+    TEST_ASSERT_EQUAL_STRING(expected, dump);
+
+    free(dump);
+    cyaml_free(doc);
+}
+
 void test_cyaml_stream_dump(void)
 {
     const char* input = "---\ndoc1\n---\ndoc2";
@@ -1486,7 +1520,70 @@ void test_cyaml_find_anchor_nested(void)
     cyaml_free(doc);
 }
 
+void test_parse_more_than_256_anchors(void)
+{
+    const size_t capacity = 16384;
+    char* yaml = malloc(capacity);
+    TEST_ASSERT_NOT_NULL(yaml);
+    size_t len = 0;
+    for (unsigned i = 0; i < 300; i++) {
+        int written = snprintf(yaml + len, capacity - len,
+            "- &anchor%u value%u\n", i, i);
+        TEST_ASSERT_GREATER_THAN(0, written);
+        len += (size_t)written;
+    }
+    len += (size_t)snprintf(yaml + len, capacity - len,
+        "- *anchor0\n- *anchor299\n");
 
+    cyaml_error_t err;
+    cyaml_doc_t* doc = cyaml_parse(yaml, len, NULL, &err);
+    TEST_ASSERT_NOT_NULL(doc);
+    cyaml_node_t* root = cyaml_root(doc);
+    TEST_ASSERT_EQUAL_UINT32(302, cyaml_seq_len(root));
+
+    cyaml_node_t* first_alias = cyaml_seq_get(root, 300);
+    cyaml_node_t* last_alias = cyaml_seq_get(root, 301);
+    TEST_ASSERT_TRUE(cyaml_is_alias(first_alias));
+    TEST_ASSERT_TRUE(cyaml_is_alias(last_alias));
+    TEST_ASSERT_EQUAL_PTR(cyaml_seq_get(root, 0), first_alias->alias.target);
+    TEST_ASSERT_EQUAL_PTR(cyaml_seq_get(root, 299), last_alias->alias.target);
+
+    cyaml_free(doc);
+    free(yaml);
+}
+
+void test_alias_uses_most_recent_anchor(void)
+{
+    const char* yaml = "- &value first\n- &value second\n- *value\n";
+    cyaml_error_t err;
+    cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
+    TEST_ASSERT_NOT_NULL(doc);
+
+    cyaml_node_t* root = cyaml_root(doc);
+    cyaml_node_t* alias = cyaml_seq_get(root, 2);
+    TEST_ASSERT_TRUE(cyaml_is_alias(alias));
+    TEST_ASSERT_EQUAL_PTR(cyaml_seq_get(root, 1), alias->alias.target);
+
+    cyaml_free(doc);
+}
+
+void test_yaml_1_2_merge_key_is_ordinary_key(void)
+{
+    const char* yaml = "defaults: &defaults\n"
+                       "  timeout: 30\n"
+                       "server:\n"
+                       "  <<: *defaults\n";
+    cyaml_error_t err;
+    cyaml_doc_t* doc = cyaml_parse(yaml, strlen(yaml), NULL, &err);
+    TEST_ASSERT_NOT_NULL(doc);
+
+    cyaml_node_t* server = cyaml_get(doc, cyaml_root(doc), "server");
+    cyaml_node_t* merge_value = cyaml_get(doc, server, "<<");
+    TEST_ASSERT_TRUE(cyaml_is_alias(merge_value));
+    TEST_ASSERT_NULL(cyaml_get(doc, server, "timeout"));
+
+    cyaml_free(doc);
+}
 
 void test_cyaml_node_copy_scalar(void)
 {
@@ -2375,6 +2472,8 @@ int main(void)
     RUN_TEST(test_cyaml_emit_null_doc);
     RUN_TEST(test_cyaml_stream_emit);
     RUN_TEST(test_cyaml_dump);
+    RUN_TEST(test_cyaml_dump_multiline_quote_as_plain);
+    RUN_TEST(test_cyaml_dump_adjacent_flow_key_as_plain);
     RUN_TEST(test_cyaml_stream_dump);
     RUN_TEST(test_cyaml_events);
     RUN_TEST(test_cyaml_stream_events);
@@ -2398,8 +2497,10 @@ int main(void)
     RUN_TEST(test_cyaml_new_alias_no_anchor);
     RUN_TEST(test_cyaml_find_anchor);
     RUN_TEST(test_cyaml_find_anchor_nested);
+    RUN_TEST(test_parse_more_than_256_anchors);
+    RUN_TEST(test_alias_uses_most_recent_anchor);
+    RUN_TEST(test_yaml_1_2_merge_key_is_ordinary_key);
 
-    
     RUN_TEST(test_cyaml_node_copy_scalar);
     RUN_TEST(test_cyaml_node_copy_seq);
     RUN_TEST(test_cyaml_node_copy_map);

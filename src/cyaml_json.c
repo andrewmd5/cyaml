@@ -165,6 +165,8 @@ typedef struct {
 
 #define JSON_PUSH(stk, cnt, cap, nd, st, dp, on_fail)                     \
     do {                                                                  \
+        /* Capture frame arguments before realloc can invalidate them. */ \
+        json_frame_t next_frame = { (nd), 0, (st), (dp) };                 \
         if ((cnt) >= (cap)) {                                             \
             size_t new_cap = (cap) * 2;                                   \
             json_frame_t* tmp = realloc((stk), new_cap * sizeof(*(stk))); \
@@ -174,10 +176,7 @@ typedef struct {
             (stk) = tmp;                                                  \
             (cap) = new_cap;                                              \
         }                                                                 \
-        (stk)[(cnt)].node = (nd);                                         \
-        (stk)[(cnt)].child_idx = 0;                                       \
-        (stk)[(cnt)].state = (st);                                        \
-        (stk)[(cnt)].depth = (dp);                                        \
+        (stk)[(cnt)] = next_frame;                                        \
         (cnt)++;                                                          \
     } while (0)
 

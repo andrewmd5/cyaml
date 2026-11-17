@@ -44,6 +44,9 @@ extern "C" {
 
 // #region Constants
 
+#ifdef CYAML_USE_GENERATED_VERSION
+#include "cyaml_version.h"
+#endif
 #ifndef CYAML_VERSION_STR
 #define CYAML_VERSION_STR "0.0.0-dev"
 #endif
